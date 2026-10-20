@@ -77,6 +77,44 @@ namespace FusionCoop.Coop
         {
             Session.HostGameHandler += OnHostMessage;
             Session.ClientGameHandler += OnClientMessage;
+            // A player who leaves hands their plants to the host, so the host can still shovel/move them.
+            Session.PlayerLeft += id =>
+            {
+                int n = Reassign(id, 0);
+                Session.SendToClients(Protocol.Build(Msg.OwnersReassigned, w => { w.Write(id); w.Write((byte)0); }));
+                if (n > 0) FusionCoopMod.Log.Msg($"[plant] P{id + 1} left: {n} plants now belong to P1");
+            };
+        }
+
+        private static int Reassign(byte from, byte to)
+        {
+            int n = 0;
+            foreach (var o in Owners.Values)
+            {
+                if (o.Owner != from) continue;
+                o.Owner = to;
+                n++;
+            }
+            return n;
+        }
+
+        // Host: every live player-placed plant, for a client whose battle started late.
+        private static byte[] BuildSnapshot()
+        {
+            var live = new List<Owned>();
+            foreach (var o in Owners.Values)
+                if (o.Plant != null) live.Add(o);
+            return Protocol.Build(Msg.PlantSnapshot, w =>
+            {
+                w.Write((ushort)live.Count);
+                foreach (var o in live)
+                {
+                    w.Write(o.Owner);
+                    w.Write((sbyte)o.Plant.thePlantColumn);
+                    w.Write((sbyte)o.Plant.thePlantRow);
+                    w.Write((int)o.Plant.thePlantType);
+                }
+            });
         }
 
         internal static void Reset()
@@ -172,6 +210,13 @@ namespace FusionCoop.Coop
 
         private static void OnHostMessage(byte from, Packet pkt)
         {
+            if (pkt.Type == Msg.SnapshotRequest)
+            {
+                var snap = BuildSnapshot();
+                Session.SendToPlayer(from, snap);
+                FusionCoopMod.Log.Msg($"[plant] sent plant snapshot to P{from + 1}");
+                return;
+            }
             if (pkt.Type != Msg.PlantRequest) return;
             var r = pkt.Reader();
             uint seq = r.ReadUInt32();
@@ -217,8 +262,40 @@ namespace FusionCoop.Coop
                     FusionCoopMod.Log.Msg($"[plant] replay P{owner + 1} {type} c{col} r{row} -> {(plant != null ? "ok" : "FAILED")}");
                     break;
                 }
+                case Msg.OwnersReassigned:
+                {
+                    byte from = r.ReadByte(), to = r.ReadByte();
+                    Reassign(from, to);
+                    break;
+                }
+                case Msg.PlantSnapshot:
+                {
+                    int count = r.ReadUInt16(), made = 0;
+                    for (int i = 0; i < count; i++)
+                    {
+                        byte owner = r.ReadByte();
+                        int col = r.ReadSByte(), row = r.ReadSByte();
+                        var type = (PlantType)r.ReadInt32();
+                        // Skip plants we already have (replayed after our start), planting again would fuse them.
+                        var existing = FindPlant(col, row, type);
+                        if (existing != null && existing.thePlantType == type)
+                        {
+                            SetOwner(existing, owner);
+                            continue;
+                        }
+                        var plant = Replay(col, row, type);
+                        if (plant == null) continue;
+                        SetOwner(plant, owner);
+                        made++;
+                    }
+                    FusionCoopMod.Log.Msg($"[plant] snapshot: {made}/{count} plants placed");
+                    break;
+                }
             }
         }
+
+        // Client: ask for the host's plants once our battle is running after a late start.
+        internal static void RequestSnapshot() => Session.SendToHost(Protocol.Build(Msg.SnapshotRequest));
 
         // ---------- labels ----------
 

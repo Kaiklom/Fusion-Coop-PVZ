@@ -28,11 +28,29 @@ namespace FusionCoop.Net
         PlantMoved = 36,
         // host -> clients: float timeScale (0 = paused); client -> host: float timeScale (> 0)
         SpeedSet = 37,
+        // host -> clients: int levelType, int levelNumber, int id, bool hasName, [string name]
+        LevelEnter = 38,
+        // host -> clients: (empty) host left the level for the main menu
+        LevelExit = 39,
+        // host -> clients: string reason
+        LevelLose = 40,
+        // client -> host: (empty) cards chosen, ready to start
+        BattleReady = 41,
+        // host -> clients: (empty) host pressed start
+        BattleStart = 42,
+        // host -> clients: byte readyMask (bit n = player n has chosen cards)
+        ReadyState = 43,
+        // client -> host: (empty) my battle started late (rejoin), send me the placed plants
+        SnapshotRequest = 44,
+        // host -> one client: ushort count, then count x (byte owner, sbyte col, sbyte row, int plantType)
+        PlantSnapshot = 45,
+        // host -> clients: byte fromOwner, byte toOwner (a player left; their plants go to the host)
+        OwnersReassigned = 46,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 6;
+        internal const int Version = 9;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

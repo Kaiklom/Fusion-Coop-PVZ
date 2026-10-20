@@ -111,6 +111,7 @@ namespace FusionCoop.Net
             Role = Role.None;
             RttMs = -1;
             Coop.PlantSync.Reset();
+            Coop.LevelSync.Reset();
             Status = "offline";
         }
 
@@ -194,6 +195,10 @@ namespace FusionCoop.Net
 
         // Gameplay messages (type >= Msg.GameFirst) go to these handlers; the byte is the sender's player id.
         internal static Action<byte, Packet> HostGameHandler;
+        // Host: a player finished the handshake (send them the current game state here).
+        internal static Action<byte> PlayerJoined;
+        // Host: a player disconnected.
+        internal static Action<byte> PlayerLeft;
         internal static Action<Packet> ClientGameHandler;
 
         internal static void SendToHost(byte[] frame) => _host?.Send(frame);
@@ -253,6 +258,7 @@ namespace FusionCoop.Net
                     Names[id] = name;
                     peer.Send(Protocol.Build(Msg.Welcome, w => w.Write(id)));
                     FusionCoopMod.Log.Msg($"P{id + 1} '{name}' joined from {peer.Remote}");
+                    PlayerJoined?.Invoke(id);
                     Status = $"hosting, {Names.Count} players";
                     break;
                 }
@@ -372,6 +378,7 @@ namespace FusionCoop.Net
                 FusionCoopMod.Log.Msg($"P{id + 1} left");
                 Broadcast(Protocol.Build(Msg.Leave, w => w.Write(id)), null);
                 Status = $"hosting, {Names.Count} players";
+                PlayerLeft?.Invoke(id);
             }
         }
 

@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.6.0", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.7.3", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -37,6 +37,7 @@ namespace FusionCoop
             Coop.PlantSync.Init();
             Coop.ShovelGloveSync.Init();
             Coop.SpeedSync.Init();
+            Coop.LevelSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -46,6 +47,11 @@ namespace FusionCoop
                 typeof(Coop.ShovelGloveSync.TryToPickPlantPatch),
                 typeof(Coop.ShovelGloveSync.TryToSetPlantByGlovePatch),
                 typeof(Coop.SpeedSync.BackToGamePatch),
+                typeof(Coop.LevelSync.EnterGamePatch),
+                typeof(Coop.LevelSync.StartButtonPatch),
+                typeof(Coop.LevelSync.RestartPatch),
+                typeof(Coop.LevelSync.EnterLoseMenuPatch),
+                typeof(Coop.LevelSync.EnterMainMenuPatch),
             });
             if (_probes.Value) PatchProbes();
         }
@@ -93,6 +99,7 @@ namespace FusionCoop
             HandleKeys();
             Session.Poll(ReadLocalCursor());
             Coop.SpeedSync.Update();
+            Coop.LevelSync.Update();
         }
 
         private static Net.CursorState _localCursor = new() { Col = -1, Row = -1 };
@@ -135,6 +142,7 @@ namespace FusionCoop
         private static void HandleKeys()
         {
             if (Input.GetKeyDown(KeyCode.F8)) Overlay.PanelOpen = !Overlay.PanelOpen;
+            if (Input.GetKeyDown(KeyCode.F12)) Coop.LevelSync.ForceStart();
             if (!Overlay.PanelOpen) return;
 
             if (Input.GetKeyDown(KeyCode.F9))
