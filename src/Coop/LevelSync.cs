@@ -15,7 +15,9 @@ namespace FusionCoop.Coop
     //   included. When the last player is ready every window presses its start button. Host F12 forces it.
     // - Host lose (UIMgr.EnterLoseMenu) and host leaving to the main menu are replayed on clients.
     //   A client's own lose is ignored: only the host's board decides.
-    // - Clients can't restart. A client going to the main menu leaves the room.
+    // - Clients can't restart. A client going to the main menu leaves the level but stays in the room
+    //   (its plants go to the host); F10 puts it back into the host's level. A client rejoining a running
+    //   level chooses its cards and presses start itself.
     // - Before following the host out of a level, a client tears its board down the way the game's
     //   restart does (ClearTheBoard, UIManager.PopAll, Board.Die); otherwise the old plants stay on screen.
     // - A client joining mid-level is sent into the host's current level.
@@ -32,9 +34,13 @@ namespace FusionCoop.Coop
         private static bool _onLevel, _battleStarted;
         private static LevelArgs _current;
         internal static readonly HashSet<byte> ReadyPlayers = new();
+        // Players currently in the host's level (host included); only they are waited for.
+        private static readonly HashSet<byte> InLevel = new();
 
         // Client state
         private static bool _hostStarted, _clientOnLevel, _snapshotAsked;
+        private static bool _clientReady;      // we pressed start in this level
+        private static bool _hostLevelActive;  // the host is in a level (for the rejoin prompt)
         private static byte _readyMask; // from the host
 
         private static StartGameBtn _startBtn; // last start button pressed on this machine
@@ -52,6 +58,7 @@ namespace FusionCoop.Coop
             Session.PlayerJoined += id =>
             {
                 if (!_onLevel) return;
+                InLevel.Add(id);
                 Session.SendToPlayer(id, BuildEnter(_current));
                 if (_battleStarted) Session.SendToPlayer(id, Protocol.Build(Msg.BattleStart));
                 else Session.SendToPlayer(id, BuildReady());
@@ -60,6 +67,7 @@ namespace FusionCoop.Coop
             Session.PlayerLeft += id =>
             {
                 ReadyPlayers.Remove(id);
+                InLevel.Remove(id);
                 if (!_onLevel || _battleStarted) return;
                 Session.SendToClients(BuildReady());
                 TryStartIfAllReady();
@@ -71,7 +79,10 @@ namespace FusionCoop.Coop
             ReadyPlayers.Clear();
             _hostStarted = false;
             _clientOnLevel = false;
+            _clientReady = false;
+            _hostLevelActive = false;
             _readyMask = 0;
+            InLevel.Clear();
         }
 
         private static byte[] BuildEnter(LevelArgs a) =>
@@ -89,7 +100,7 @@ namespace FusionCoop.Coop
         private static bool AllReady()
         {
             foreach (var id in Session.Names.Keys)
-                if (!ReadyPlayers.Contains(id)) return false;
+                if (InLevel.Contains(id) && !ReadyPlayers.Contains(id)) return false;
             return true;
         }
 
@@ -104,7 +115,7 @@ namespace FusionCoop.Coop
         {
             string s = "";
             foreach (var id in Session.Names.Keys)
-                if (!ReadyPlayers.Contains(id)) s += $"P{id + 1} ";
+                if (InLevel.Contains(id) && !ReadyPlayers.Contains(id)) s += $"P{id + 1} ";
             return s.Trim();
         }
 
@@ -160,6 +171,18 @@ namespace FusionCoop.Coop
             PlantSync.RequestSnapshot();
         }
 
+        // Client in the room but not in the host's level.
+        internal static bool CanRejoin => IsClient && _hostLevelActive && !_clientOnLevel;
+
+        internal static string RejoinText() => CanRejoin ? "The host is playing a level - press [F10] to rejoin" : null;
+
+        internal static void RequestRejoin()
+        {
+            if (!CanRejoin) return;
+            Session.SendToHost(Protocol.Build(Msg.RejoinLevel));
+            FusionCoopMod.Log.Msg("[level] asking to rejoin the host's level");
+        }
+
         // Status line for the overlay, null when not choosing cards.
         internal static string ReadyText()
         {
@@ -168,6 +191,7 @@ namespace FusionCoop.Coop
             string s = "ready: ";
             foreach (var id in Session.Names.Keys)
             {
+                if (IsHost && !InLevel.Contains(id)) continue;
                 bool ready = IsHost ? ReadyPlayers.Contains(id) : (_readyMask & (1 << id)) != 0;
                 s += $"P{id + 1} {(ready ? "OK" : "...")}   ";
             }
@@ -214,6 +238,8 @@ namespace FusionCoop.Coop
                 _battleStarted = false;
                 _startBtn = null;
                 ReadyPlayers.Clear();
+                InLevel.Clear();
+                foreach (var pid in Session.Names.Keys) InLevel.Add(pid);
                 Session.SendToClients(BuildEnter(_current));
                 FusionCoopMod.Log.Msg($"[level] host entered {levelType} {levelNumber} (id {id}) -> clients");
             }
@@ -235,6 +261,7 @@ namespace FusionCoop.Coop
                 }
                 if (IsClient && _clientOnLevel && !_hostStarted)
                 {
+                    _clientReady = true;
                     Session.SendToHost(Protocol.Build(Msg.BattleReady));
                     Overlay.Toast("Ready - waiting for the others to choose cards");
                     return false;
@@ -284,9 +311,11 @@ namespace FusionCoop.Coop
                 // A client quitting the level to the main menu leaves the room.
                 if (IsClient && !_replaying && _clientOnLevel)
                 {
-                    FusionCoopMod.Log.Msg("[level] client went to the main menu: leaving the room");
-                    Session.Stop();
-                    Overlay.Toast("You left the room");
+                    FusionCoopMod.Log.Msg("[level] client went to the main menu: leaving the level");
+                    _clientOnLevel = false;
+                    _clientReady = false;
+                    Session.SendToHost(Protocol.Build(Msg.LeaveLevel));
+                    Overlay.Toast("You left the level (still in the room)");
                 }
             }
 
@@ -297,6 +326,7 @@ namespace FusionCoop.Coop
                 _battleStarted = false;
                 _startBtn = null;
                 ReadyPlayers.Clear();
+                InLevel.Clear();
                 Session.SendToClients(Protocol.Build(Msg.LevelExit));
                 FusionCoopMod.Log.Msg("[level] host left to main menu -> clients");
             }
@@ -306,6 +336,30 @@ namespace FusionCoop.Coop
 
         private static void OnHostMessage(byte from, Packet pkt)
         {
+            if (pkt.Type == Msg.LeaveLevel)
+            {
+                InLevel.Remove(from);
+                ReadyPlayers.Remove(from);
+                PlantSync.HandOverToHost(from);
+                FusionCoopMod.Log.Msg($"[level] P{from + 1} left the level");
+                Overlay.Toast($"P{from + 1} left the level");
+                if (_onLevel && !_battleStarted)
+                {
+                    Session.SendToClients(BuildReady());
+                    TryStartIfAllReady();
+                }
+                return;
+            }
+            if (pkt.Type == Msg.RejoinLevel)
+            {
+                if (!_onLevel) return;
+                InLevel.Add(from);
+                Session.SendToPlayer(from, BuildEnter(_current));
+                if (_battleStarted) Session.SendToPlayer(from, Protocol.Build(Msg.BattleStart));
+                else Session.SendToClients(BuildReady());
+                FusionCoopMod.Log.Msg($"[level] P{from + 1} rejoined the level");
+                return;
+            }
             if (pkt.Type != Msg.BattleReady || !_onLevel || _battleStarted) return;
             if (!ReadyPlayers.Add(from)) return;
             Overlay.Toast($"P{from + 1} is ready");
@@ -326,6 +380,8 @@ namespace FusionCoop.Coop
                     string name = r.ReadBoolean() ? r.ReadString() : null;
                     _hostStarted = false;
                     _clientOnLevel = true;
+                    _hostLevelActive = true;
+                    _clientReady = false;
                     _snapshotAsked = false;
                     _readyMask = 0;
                     _startBtn = null;
@@ -342,8 +398,18 @@ namespace FusionCoop.Coop
                     break;
                 case Msg.BattleStart:
                     _hostStarted = true;
-                    FusionCoopMod.Log.Msg("[level] host started the battle");
-                    StartLocal();
+                    if (!_clientOnLevel) break;
+                    if (_clientReady)
+                    {
+                        FusionCoopMod.Log.Msg("[level] host started the battle");
+                        StartLocal();
+                    }
+                    else
+                    {
+                        // Joined a running level: let this player choose cards first.
+                        FusionCoopMod.Log.Msg("[level] joined a running level, waiting for our card choice");
+                        Overlay.Toast("The battle is running - choose your cards and press start", 4);
+                    }
                     break;
                 case Msg.LevelLose:
                 {
@@ -354,9 +420,12 @@ namespace FusionCoop.Coop
                 }
                 case Msg.LevelExit:
                     _hostStarted = false;
+                    _hostLevelActive = false;
+                    _clientReady = false;
+                    bool wasOnLevel = _clientOnLevel;
                     _clientOnLevel = false;
                     FusionCoopMod.Log.Msg("[level] host left to main menu");
-                    if (Board.Instance != null)
+                    if (wasOnLevel && Board.Instance != null)
                     {
                         Replay(() =>
                         {

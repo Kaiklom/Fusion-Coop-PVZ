@@ -46,11 +46,15 @@ namespace FusionCoop.Net
         PlantSnapshot = 45,
         // host -> clients: byte fromOwner, byte toOwner (a player left; their plants go to the host)
         OwnersReassigned = 46,
+        // client -> host: (empty) I went back to the main menu but stay in the room
+        LeaveLevel = 47,
+        // client -> host: (empty) put me back into your current level
+        RejoinLevel = 48,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 9;
+        internal const int Version = 10;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

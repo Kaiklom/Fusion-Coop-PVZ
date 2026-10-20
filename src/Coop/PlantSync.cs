@@ -78,12 +78,15 @@ namespace FusionCoop.Coop
             Session.HostGameHandler += OnHostMessage;
             Session.ClientGameHandler += OnClientMessage;
             // A player who leaves hands their plants to the host, so the host can still shovel/move them.
-            Session.PlayerLeft += id =>
-            {
-                int n = Reassign(id, 0);
-                Session.SendToClients(Protocol.Build(Msg.OwnersReassigned, w => { w.Write(id); w.Write((byte)0); }));
-                if (n > 0) FusionCoopMod.Log.Msg($"[plant] P{id + 1} left: {n} plants now belong to P1");
-            };
+            Session.PlayerLeft += HandOverToHost;
+        }
+
+        // Host: a player left the room or the level; their plants become the host's.
+        internal static void HandOverToHost(byte id)
+        {
+            int n = Reassign(id, 0);
+            Session.SendToClients(Protocol.Build(Msg.OwnersReassigned, w => { w.Write(id); w.Write((byte)0); }));
+            if (n > 0) FusionCoopMod.Log.Msg($"[plant] P{id + 1} left: {n} plants now belong to P1");
         }
 
         private static int Reassign(byte from, byte to)

@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.7.3", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.7.5", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -143,6 +143,13 @@ namespace FusionCoop
         {
             if (Input.GetKeyDown(KeyCode.F8)) Overlay.PanelOpen = !Overlay.PanelOpen;
             if (Input.GetKeyDown(KeyCode.F12)) Coop.LevelSync.ForceStart();
+            // In-room actions work with the panel hidden; the rejoin prompt shows on screen anyway.
+            if (Input.GetKeyDown(KeyCode.F10) && Coop.LevelSync.CanRejoin)
+            {
+                Coop.LevelSync.RequestRejoin();
+                return;
+            }
+            // Session setup and IP typing only with the panel open, so digits don't edit the IP mid-game.
             if (!Overlay.PanelOpen) return;
 
             if (Input.GetKeyDown(KeyCode.F9))

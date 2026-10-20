@@ -27,6 +27,12 @@ namespace FusionCoop
                 GUI.Box(new Rect(cx - w / 2, Screen.height * 0.3f, w, 34), "");
                 GUI.Label(new Rect(cx - w / 2 + 12, Screen.height * 0.3f + 7, w - 24, 22), "PAUSED BY HOST - waiting for the host to resume");
             }
+            string rejoin = Coop.LevelSync.RejoinText();
+            if (rejoin != null)
+            {
+                GUI.Box(new Rect(cx - w / 2, 12, w, 30), "");
+                GUI.Label(new Rect(cx - w / 2 + 12, 17, w - 24, 22), rejoin);
+            }
             string ready = Coop.LevelSync.ReadyText();
             if (ready != null)
             {
@@ -69,7 +75,7 @@ namespace FusionCoop
             foreach (var kv in Session.Names) players += $"P{kv.Key + 1}:{kv.Value}  ";
 
             string text =
-                "FusionCoop 0.7.3 (level sync test)\n" +
+                "FusionCoop 0.7.5 (level sync test)\n" +
                 $"status: {Session.Status}\n" +
                 $"role: {role}    ping: {rtt}\n" +
                 $"players: {players}\n" +
