@@ -112,6 +112,7 @@ namespace FusionCoop.Net
             RttMs = -1;
             Coop.PlantSync.Reset();
             Coop.LevelSync.Reset();
+            Coop.ZombieSync.Reset();
             Status = "offline";
         }
 

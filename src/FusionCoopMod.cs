@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.7.5", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.2", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -20,6 +20,8 @@ namespace FusionCoop
         private static MelonPreferences_Entry<int> _port;
         private static MelonPreferences_Entry<bool> _probes;
         private static MelonPreferences_Entry<string> _autoStart;
+        private static MelonPreferences_Entry<int> _autoLevel;
+        private static double _autoLevelAt = -1, _autoForceAt = -1;
         private static bool _autoStarted;
 
         public override void OnInitializeMelon()
@@ -32,12 +34,14 @@ namespace FusionCoop
             _port = cat.CreateEntry("Port", Protocol.DefaultPort, "TCP port");
             _probes = cat.CreateEntry("ProbeLog", true, "Log game calls (plant/sun/shovel) for research");
             _autoStart = cat.CreateEntry("AutoStart", "", "Testing: 'host' or 'join' starts the session automatically");
+            _autoLevel = cat.CreateEntry("AutoLevel", 0, "Testing: host enters this Adventure level once a client joins and starts it; clients auto-ready (0 = off)");
             Overlay.IpDraft = _lastIp.Value;
 
             Coop.PlantSync.Init();
             Coop.ShovelGloveSync.Init();
             Coop.SpeedSync.Init();
             Coop.LevelSync.Init();
+            Coop.ZombieSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -52,6 +56,14 @@ namespace FusionCoop
                 typeof(Coop.LevelSync.RestartPatch),
                 typeof(Coop.LevelSync.EnterLoseMenuPatch),
                 typeof(Coop.LevelSync.EnterMainMenuPatch),
+                typeof(Coop.ZombieSync.SetZombiePatch),
+                typeof(Coop.ZombieSync.SetZombieMindPatch),
+                typeof(Coop.ZombieSync.TakeDamagePatch),
+                typeof(Coop.ZombieSync.DiePatch),
+                typeof(Coop.ZombieSync.MoveUpdatePatch),
+                typeof(Coop.ZombieSync.AttackUpdatePatch),
+                typeof(Coop.ZombieSync.NewZombieUpdatePatch),
+                typeof(Coop.PlantSync.PlantDiePatch),
             });
             if (_probes.Value) PatchProbes();
         }
@@ -98,8 +110,37 @@ namespace FusionCoop
             }
             HandleKeys();
             Session.Poll(ReadLocalCursor());
+            if (_autoLevel.Value > 0) AutoLevelTest();
             Coop.SpeedSync.Update();
             Coop.LevelSync.Update();
+            Coop.ZombieSync.Update();
+            Coop.PlantSync.Update();
+        }
+
+        // Testing: host enters level AutoLevel 3 s after a client joins, forces the start 25 s later.
+        private static void AutoLevelTest()
+        {
+            if (Session.Role == Role.Client)
+            {
+                Coop.LevelSync.AutoReady();
+                return;
+            }
+            if (Session.Role != Role.Host || Session.Names.Count < 2) return;
+            double now = Session.Now;
+            if (_autoLevelAt < 0) _autoLevelAt = now + 3;
+            else if (_autoLevelAt > 0 && now >= _autoLevelAt)
+            {
+                _autoLevelAt = 0;
+                _autoForceAt = now + 25;
+                Log.Msg($"[test] entering Adventure {_autoLevel.Value}");
+                Il2Cpp.UIMgr.EnterGame(Il2Cpp.LevelType.Advanture, _autoLevel.Value, -1, null);
+            }
+            else if (_autoForceAt > 0 && now >= _autoForceAt)
+            {
+                _autoForceAt = 0;
+                Log.Msg("[test] forcing start");
+                Coop.LevelSync.ForceStart();
+            }
         }
 
         private static Net.CursorState _localCursor = new() { Col = -1, Row = -1 };

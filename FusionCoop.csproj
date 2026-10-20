@@ -26,6 +26,7 @@
     <Reference Include="Il2Cppmscorlib"><HintPath>$(MLDir)\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(MLDir)\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(MLDir)\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AnimationModule"><HintPath>$(MLDir)\Il2CppAssemblies\UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(MLDir)\Il2CppAssemblies\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 

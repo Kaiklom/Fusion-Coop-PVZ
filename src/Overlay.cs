@@ -75,7 +75,7 @@ namespace FusionCoop
             foreach (var kv in Session.Names) players += $"P{kv.Key + 1}:{kv.Value}  ";
 
             string text =
-                "FusionCoop 0.7.5 (level sync test)\n" +
+                "FusionCoop 0.8.2 (zombie sync test)\n" +
                 $"status: {Session.Status}\n" +
                 $"role: {role}    ping: {rtt}\n" +
                 $"players: {players}\n" +

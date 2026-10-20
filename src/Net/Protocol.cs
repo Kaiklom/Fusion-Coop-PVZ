@@ -50,11 +50,25 @@ namespace FusionCoop.Net
         LeaveLevel = 47,
         // client -> host: (empty) put me back into your current level
         RejoinLevel = 48,
+        // host -> clients, 10 Hz: int wave, int maxWave, float timeUntilNextWave, bool isHugeWave,
+        // float hugeWaveCountDown, ushort count, then
+        // count x (uint id, int type, sbyte row, float x, float y, int health, int armor1, int armor2,
+        // int animatorStateHash, float animatorTime, byte flags[1 dying, 2 mind controlled])
+        ZombieState = 49,
+        // host -> clients: uint zombie id (Zombie.Die ran on the host)
+        ZombieDied = 50,
+        // host -> clients: sbyte col, sbyte row, int plantType, int dieReason (eaten, crushed, used up...)
+        PlantDied = 51,
+        // host -> clients: byte owner (255 none), sbyte col, sbyte row, int plantType
+        // (a plant the game created on its own during battle: presents, plant effects)
+        PlantSpawned = 52,
+        // host -> clients, 5 Hz: ushort count, then count x (sbyte col, sbyte row, int type, int health, int shield)
+        PlantState = 53,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 10;
+        internal const int Version = 13;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

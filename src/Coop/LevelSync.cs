@@ -171,6 +171,16 @@ namespace FusionCoop.Coop
             PlantSync.RequestSnapshot();
         }
 
+        // Testing (AutoLevel pref): press "ready" without a click once the card chooser is up.
+        internal static void AutoReady()
+        {
+            if (!IsClient || !_clientOnLevel || _clientReady || _hostStarted) return;
+            if (InitBoard.Instance == null) return;
+            _clientReady = true;
+            Session.SendToHost(Protocol.Build(Msg.BattleReady));
+            FusionCoopMod.Log.Msg("[test] auto ready");
+        }
+
         // Client in the room but not in the host's level.
         internal static bool CanRejoin => IsClient && _hostLevelActive && !_clientOnLevel;
 

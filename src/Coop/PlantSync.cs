@@ -124,13 +124,23 @@ namespace FusionCoop.Coop
         {
             Owners.Clear();
             PendingRequests.Clear();
+            CellOwner.Clear();
         }
+
+        // Last player who placed a plant in each cell: plants the game makes there later (presents,
+        // fusion results from effects) belong to them.
+        private static readonly Dictionary<int, byte> CellOwner = new();
+        private static int CellKey(int col, int row) => col * 64 + row;
 
         internal static void SetOwner(Plant plant, byte owner)
         {
             if (plant == null) return;
             Owners[plant.GetInstanceID()] = new Owned { Plant = plant, Owner = owner };
+            CellOwner[CellKey(plant.thePlantColumn, plant.thePlantRow)] = owner;
         }
+
+        private static bool BattleRunning =>
+            Board.Instance != null && (InitBoard.Instance == null || InitBoard.Instance.ready);
 
         // ---------- local planting ----------
 
@@ -175,12 +185,111 @@ namespace FusionCoop.Coop
             }
         }
 
+        // Every SetPlant call. Player actions (_capturing) and replays are handled by their own messages.
+        // Anything else during battle is the game making a plant on its own (present opening, plant
+        // effects): on the host it is sent to clients with the cell's owner; on clients it is blocked,
+        // because random results would differ — the host's result arrives instead.
         [HarmonyPatch(typeof(CreatePlant), nameof(CreatePlant.SetPlant))]
         internal static class SetPlantCapture
         {
+            private static bool Prefix(ref Plant __result)
+            {
+                if (Session.Role != Role.Client || !Session.Ready || _capturing || Replaying) return true;
+                if (!BattleRunning) return true; // level setup before the battle stays local
+                __result = null;
+                return false;
+            }
+
             private static void Postfix(Plant __result)
             {
-                if (_capturing && __result != null) _captured = __result;
+                if (__result == null) return;
+                if (_capturing)
+                {
+                    _captured = __result;
+                    return;
+                }
+                if (Replaying || Session.Role != Role.Host || !Session.Ready || !BattleRunning) return;
+                int col = __result.thePlantColumn, row = __result.thePlantRow;
+                byte owner = CellOwner.TryGetValue(CellKey(col, row), out var o) ? o : (byte)255;
+                if (owner != 255) SetOwner(__result, owner);
+                var type = __result.thePlantType;
+                Session.SendToClients(Protocol.Build(Msg.PlantSpawned, w =>
+                {
+                    w.Write(owner);
+                    w.Write((sbyte)col);
+                    w.Write((sbyte)row);
+                    w.Write((int)type);
+                }));
+            }
+        }
+
+        // ---------- plant health ----------
+
+        private static double _nextHealthSend;
+
+        // Host, 5 Hz: health of every plant on the board.
+        private static int _boardId;
+
+        internal static void Update()
+        {
+            // New board (level/restart): the cell owners of the old one no longer apply.
+            int bid = Board.Instance != null ? Board.Instance.GetInstanceID() : 0;
+            if (bid != _boardId)
+            {
+                _boardId = bid;
+                CellOwner.Clear();
+            }
+
+            if (Session.Role != Role.Host || !Session.Ready || Session.Names.Count < 2) return;
+            var board = Board.Instance;
+            if (board == null || board.boardEntity == null || Session.Now < _nextHealthSend) return;
+            _nextHealthSend = Session.Now + 0.2;
+            var list = board.boardEntity.plantArray;
+            if (list == null) return;
+            var plants = new List<Plant>();
+            for (int i = 0; i < list.Count; i++)
+            {
+                var p = list[i];
+                if (p != null) plants.Add(p);
+            }
+            Session.SendToClients(Protocol.Build(Msg.PlantState, w =>
+            {
+                w.Write((ushort)plants.Count);
+                foreach (var p in plants)
+                {
+                    w.Write((sbyte)p.thePlantColumn);
+                    w.Write((sbyte)p.thePlantRow);
+                    w.Write((int)p.thePlantType);
+                    w.Write(p.thePlantHealth);
+                    w.Write(p.theShieldHealth);
+                }
+            }));
+        }
+
+        // Client: damage through the game's TakeDamage so damage looks (bitten wall-nut) match, then copy.
+        private static void ApplyPlantState(System.IO.BinaryReader r)
+        {
+            int count = r.ReadUInt16();
+            for (int i = 0; i < count; i++)
+            {
+                int col = r.ReadSByte(), row = r.ReadSByte();
+                var type = (PlantType)r.ReadInt32();
+                int health = r.ReadInt32(), shield = r.ReadInt32();
+                var p = FindPlant(col, row, type);
+                if (p == null || p.thePlantType != type) continue;
+                int local = p.thePlantHealth + p.theShieldHealth;
+                int host = health + shield;
+                if (host < local && host > 0)
+                {
+                    int dmg = local - host;
+                    Replaying = true;
+                    try { p.TakeDamage(dmg, null, DamageType.Normal, (PlantType)(-1), false); }
+                    catch (System.Exception e) { FusionCoopMod.Log.Warning($"[plant] damage replay failed: {e.Message}"); }
+                    finally { Replaying = false; }
+                }
+                if (p == null) continue;
+                p.thePlantHealth = health;
+                p.theShieldHealth = shield;
             }
         }
 
@@ -265,6 +374,34 @@ namespace FusionCoop.Coop
                     FusionCoopMod.Log.Msg($"[plant] replay P{owner + 1} {type} c{col} r{row} -> {(plant != null ? "ok" : "FAILED")}");
                     break;
                 }
+                case Msg.PlantSpawned:
+                {
+                    byte owner = r.ReadByte();
+                    int col = r.ReadSByte(), row = r.ReadSByte();
+                    var type = (PlantType)r.ReadInt32();
+                    var existing = FindPlant(col, row, type);
+                    var plant = existing != null && existing.thePlantType == type ? existing : Replay(col, row, type);
+                    if (plant != null && owner != 255) SetOwner(plant, owner);
+                    FusionCoopMod.Log.Msg($"[plant] host made {type} c{col} r{row} -> {(plant != null ? "ok" : "FAILED")}");
+                    break;
+                }
+                case Msg.PlantState:
+                    ApplyPlantState(r);
+                    break;
+                case Msg.PlantDied:
+                {
+                    int col = r.ReadSByte(), row = r.ReadSByte();
+                    var type = (PlantType)r.ReadInt32();
+                    var reason = (Plant.DieReason)r.ReadInt32();
+                    var plant = FindPlant(col, row, type);
+                    // Exact type only: after a fusion the cell holds a different plant that must live.
+                    if (plant == null || plant.thePlantType != type) break;
+                    Owners.Remove(plant.GetInstanceID());
+                    Replaying = true;
+                    try { plant.Die(reason); }
+                    finally { Replaying = false; }
+                    break;
+                }
                 case Msg.OwnersReassigned:
                 {
                     byte from = r.ReadByte(), to = r.ReadByte();
@@ -299,6 +436,34 @@ namespace FusionCoop.Coop
 
         // Client: ask for the host's plants once our battle is running after a late start.
         internal static void RequestSnapshot() => Session.SendToHost(Protocol.Build(Msg.SnapshotRequest));
+
+        // ---------- deaths decided by the host ----------
+
+        // Client zombies are puppets and never eat, so plant deaths come from the host.
+        // Deaths handled elsewhere (fusion, level-up, shovel, hiding) are not sent.
+        private static bool SendsDeath(Plant.DieReason reason) =>
+            reason != Plant.DieReason.ByMix && reason != Plant.DieReason.ByDisMix &&
+            reason != Plant.DieReason.ByLevelUp && reason != Plant.DieReason.ByShovel &&
+            reason != Plant.DieReason.Hid;
+
+        [HarmonyPatch(typeof(Plant), nameof(Plant.Die))]
+        internal static class PlantDiePatch
+        {
+            private static void Prefix(Plant __instance, Plant.DieReason reason)
+            {
+                if (Session.Role != Role.Host || !Session.Ready || Replaying || __instance == null) return;
+                if (!SendsDeath(reason) || Board.Instance == null) return;
+                int col = __instance.thePlantColumn, row = __instance.thePlantRow;
+                var type = __instance.thePlantType;
+                Session.SendToClients(Protocol.Build(Msg.PlantDied, w =>
+                {
+                    w.Write((sbyte)col);
+                    w.Write((sbyte)row);
+                    w.Write((int)type);
+                    w.Write((int)reason);
+                }));
+            }
+        }
 
         // ---------- labels ----------
 
