@@ -53,22 +53,34 @@ namespace FusionCoop.Net
         // host -> clients, 10 Hz: int wave, int maxWave, float timeUntilNextWave, bool isHugeWave,
         // float hugeWaveCountDown, ushort count, then
         // count x (uint id, int type, sbyte row, float x, float y, int health, int armor1, int armor2,
-        // int animatorStateHash, float animatorTime, byte flags[1 dying, 2 mind controlled])
+        // int animatorStateHash, float animatorTime, byte flags[1 dying, 2 mind controlled],
+        // byte effects[1 cold, 2 freeze, 4 butter], float animatorSpeed, float moveSpeed)
         ZombieState = 49,
         // host -> clients: uint zombie id (Zombie.Die ran on the host)
         ZombieDied = 50,
         // host -> clients: sbyte col, sbyte row, int plantType, int dieReason (eaten, crushed, used up...)
         PlantDied = 51,
-        // host -> clients: byte owner (255 none), sbyte col, sbyte row, int plantType
-        // (a plant the game created on its own during battle: presents, plant effects)
+        // host -> clients: byte owner (255 none), sbyte col, sbyte row, int requestedType, int resultType
+        // (a plant the game created on its own during battle: presents, plant effects; the requested
+        // type may fuse with the plant already in the cell into resultType)
         PlantSpawned = 52,
-        // host -> clients, 5 Hz: ushort count, then count x (sbyte col, sbyte row, int type, int health, int shield)
+        // host -> clients, 5 Hz: ushort count, then
+        // count x (sbyte col, sbyte row, int type, int health, int maxHealth, int shield)
         PlantState = 53,
+        // client -> host: uint zombie id, int damage, int damageType (the client's hammer hit a puppet)
+        ZombieHit = 54,
+        // host -> clients: sbyte col, sbyte row, int plantType, byte kind[0 trigger, 1 bool false,
+        // 2 bool true], string name (an animator change from a plant's PlantShootUpdate: the host
+        // decides when plants attack and which attack, e.g. corn-pult kernel or butter)
+        PlantShoot = 55,
+        // host -> clients: sbyte col, sbyte row, int plantType, uint zombie id, bool zombieDied (a magnet
+        // plant pulled that zombie's metal item: armor, ladder, door, or the whole iron zombie)
+        MagnetAttract = 56,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 13;
+        internal const int Version = 17;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

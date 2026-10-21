@@ -41,7 +41,7 @@ namespace FusionCoop.Coop
         }
 
         private static readonly Dictionary<uint, Remote> ClientZombies = new();
-        private static readonly HashSet<int> Puppets = new(); // instance ids of live mirrored zombies
+        private static readonly Dictionary<int, uint> Puppets = new(); // instance id -> network id of live mirrored zombies
         private static int _clientBoardId;
         private static int _hostWave = -1;
         private static bool _hostHuge, _hugeShownForNext;
@@ -54,6 +54,7 @@ namespace FusionCoop.Coop
         internal static void Init()
         {
             Session.ClientGameHandler += OnClientMessage;
+            Session.HostGameHandler += OnHostMessage;
         }
 
         internal static void Reset()
@@ -68,7 +69,7 @@ namespace FusionCoop.Coop
             _allowWaveStep = false;
         }
 
-        private static bool IsPuppet(Zombie z) => IsClient && z != null && Puppets.Contains(z.GetInstanceID());
+        private static bool IsPuppet(Zombie z) => IsClient && z != null && Puppets.ContainsKey(z.GetInstanceID());
 
         // ---------- spawning ----------
 
@@ -117,7 +118,61 @@ namespace FusionCoop.Coop
         [HarmonyPatch(typeof(Zombie), nameof(Zombie.TakeDamage))]
         internal static class TakeDamagePatch
         {
-            private static bool Prefix() => !(IsClient && !Replaying && Board.Instance != null);
+            private static bool Prefix(Zombie __instance, int theDamage, DamageType theDamageType)
+            {
+                if (!(IsClient && !Replaying && Board.Instance != null)) return true;
+                // The local player's hammer: the host applies the hit to its zombie.
+                if (_hammering && __instance != null && Puppets.TryGetValue(__instance.GetInstanceID(), out uint id))
+                {
+                    Session.SendToHost(Protocol.Build(Msg.ZombieHit, w =>
+                    {
+                        w.Write(id);
+                        w.Write(theDamage);
+                        w.Write((int)theDamageType);
+                    }));
+                    FusionCoopMod.Log.Msg($"[zombie] hammer hit #{id} for {theDamage}");
+                }
+                return false;
+            }
+        }
+
+        // ---------- hammer ----------
+        // Each window has its own hammer and cooldown (tools are not shared). A client's hammer swings
+        // locally; the damage it deals to puppets is sent to the host, which damages its zombie.
+        private static bool _hammering;
+
+        [HarmonyPatch(typeof(Hammer), nameof(Hammer.Use))]
+        internal static class HammerUsePatch
+        {
+            private static void Prefix() => _hammering = true;
+            private static System.Exception Finalizer(System.Exception __exception)
+            {
+                _hammering = false;
+                return __exception;
+            }
+        }
+
+        [HarmonyPatch(typeof(Hammer), "AnimCrush")]
+        internal static class HammerCrushPatch
+        {
+            private static void Prefix() => _hammering = true;
+            private static System.Exception Finalizer(System.Exception __exception)
+            {
+                _hammering = false;
+                return __exception;
+            }
+        }
+
+        private static void OnHostMessage(byte from, Packet pkt)
+        {
+            if (pkt.Type != Msg.ZombieHit) return;
+            var r = pkt.Reader();
+            uint id = r.ReadUInt32();
+            int damage = r.ReadInt32();
+            var type = (DamageType)r.ReadInt32();
+            if (!HostZombies.TryGetValue(id, out var z) || z == null || z.theStatus == ZombieStatus.Dying) return;
+            try { z.TakeDamage(damage, null, type, (PlantType)(-1), false); }
+            catch (System.Exception e) { FusionCoopMod.Log.Warning($"[zombie] P{from + 1} hammer hit failed: {e.Message}"); }
         }
 
         [HarmonyPatch(typeof(Zombie), nameof(Zombie.Die))]
@@ -130,7 +185,14 @@ namespace FusionCoop.Coop
             {
                 if (Session.Role != Role.Host || !Session.Ready || __instance == null) return;
                 if (!HostIds.TryGetValue(__instance.GetInstanceID(), out uint id)) return;
-                Session.SendToClients(Protocol.Build(Msg.ZombieDied, w => w.Write(id)));
+                // Dying while a magnet pulls it (iron zombies): sent with the magnet message instead,
+                // so clients run the pull before the death.
+                if (_attracting != null && _attracting.Pointer == __instance.Pointer)
+                {
+                    _attractKilled = true;
+                    return;
+                }
+                SendDied(id);
             }
         }
 
@@ -144,6 +206,116 @@ namespace FusionCoop.Coop
         internal static class AttackUpdatePatch
         {
             private static bool Prefix(Zombie __instance) => !IsPuppet(__instance);
+        }
+
+        // Status effects (cold, freeze, butter) come from the host too: a client's own hit on a puppet
+        // is ignored, and the host's effects are put on and taken off in ApplyEffects.
+        [HarmonyPatch(typeof(Zombie), nameof(Zombie.SetFreeze))]
+        internal static class SetFreezePatch
+        {
+            private static bool Prefix(Zombie __instance) => Replaying || !IsPuppet(__instance);
+        }
+
+        [HarmonyPatch(typeof(Zombie), nameof(Zombie.SetCold))]
+        internal static class SetColdPatch
+        {
+            private static bool Prefix(Zombie __instance) => Replaying || !IsPuppet(__instance);
+        }
+
+        [HarmonyPatch(typeof(Zombie), nameof(Zombie.SetMindControl))]
+        internal static class SetMindControlPatch
+        {
+            private static bool Prefix(Zombie __instance) => Replaying || !IsPuppet(__instance);
+        }
+
+        [HarmonyPatch(typeof(Zombie), nameof(Zombie.Buttered))]
+        internal static class ButteredPatch
+        {
+            private static bool Prefix(Zombie __instance) => Replaying || !IsPuppet(__instance);
+        }
+
+        // Magnet plants pulling metal items (armor, ladders, doors): the host decides, clients replay it
+        // on the same puppet. Without this the host's lost armor reaches clients as damage and just falls.
+        private static Zombie _attracting; // host: zombie a magnet is pulling right now
+        private static bool _attractKilled;
+
+        [HarmonyPatch(typeof(Magnetshroom), "TryAttrackZombie")]
+        internal static class MagnetAttractPatch
+        {
+            private static bool Prefix(Zombie zombie, ref bool __result, out Zombie __state)
+            {
+                __state = _attracting;
+                if (Session.Role == Role.Host)
+                {
+                    _attracting = zombie;
+                    _attractKilled = false;
+                }
+                if (Replaying || !IsPuppet(zombie)) return true;
+                __result = false;
+                return false;
+            }
+
+            private static void Postfix(Magnetshroom __instance, Zombie zombie, bool __result)
+            {
+                if (Session.Role != Role.Host || !Session.Ready || zombie == null) return;
+                if (!HostIds.TryGetValue(zombie.GetInstanceID(), out uint id)) return;
+                bool died = _attractKilled;
+                _attractKilled = false;
+                if (!__result)
+                {
+                    if (died) SendDied(id);
+                    return;
+                }
+                int col = __instance.thePlantColumn, row = __instance.thePlantRow;
+                var type = __instance.thePlantType;
+                Session.SendToClients(Protocol.Build(Msg.MagnetAttract, w =>
+                {
+                    w.Write((sbyte)col);
+                    w.Write((sbyte)row);
+                    w.Write((int)type);
+                    w.Write(id);
+                    w.Write(died);
+                }));
+            }
+
+            private static System.Exception Finalizer(System.Exception __exception, Zombie __state)
+            {
+                _attracting = __state;
+                return __exception;
+            }
+        }
+
+        private static void SendDied(uint id) => Session.SendToClients(Protocol.Build(Msg.ZombieDied, w => w.Write(id)));
+
+        private static void ReplayMagnet(Packet pkt)
+        {
+            var r = pkt.Reader();
+            int col = r.ReadSByte(), row = r.ReadSByte();
+            var type = (PlantType)r.ReadInt32();
+            uint id = r.ReadUInt32();
+            bool died = r.ReadBoolean();
+            if (!ClientZombies.TryGetValue(id, out var rz) || rz.Zombie == null || rz.Killed) return;
+            try { PullOnClient(rz, col, row, type, id); }
+            finally
+            {
+                // The host's zombie died from the pull: make sure ours is gone too.
+                if (died) Kill(rz);
+            }
+        }
+
+        private static void PullOnClient(Remote rz, int col, int row, PlantType type, uint id)
+        {
+            var plant = PlantSync.FindPlant(col, row, type);
+            var magnet = plant != null && plant.thePlantType == type ? plant.TryCast<Magnetshroom>() : null;
+            if (magnet == null)
+            {
+                FusionCoopMod.Log.Warning($"[zombie] magnet {type} c{col} r{row} not found for #{id}");
+                return;
+            }
+            var z = rz.Zombie;
+            bool ok = false;
+            Replay(() => ok = magnet.TryAttrackZombie(z));
+            FusionCoopMod.Log.Msg($"[zombie] magnet {type} c{col} r{row} pulled #{id}: {ok}");
         }
 
         [HarmonyPatch(typeof(Board), "NewZombieUpdate")]
@@ -228,13 +400,14 @@ namespace FusionCoop.Coop
                     if (z.theStatus == ZombieStatus.Dying) flags |= FlagDying;
                     if (z.isMindControlled) flags |= FlagMind;
                     int animHash = 0;
-                    float animTime = 0;
+                    float animTime = 0, animSpeed = 1;
                     var anim = z.anim;
                     if (anim != null)
                     {
                         var st = anim.GetCurrentAnimatorStateInfo(0);
                         animHash = st.fullPathHash;
                         animTime = st.normalizedTime % 1f;
+                        animSpeed = anim.speed;
                     }
                     w.Write(kv.Key);
                     w.Write((int)z.theZombieType);
@@ -247,6 +420,9 @@ namespace FusionCoop.Coop
                     w.Write(animHash);
                     w.Write(animTime);
                     w.Write(flags);
+                    w.Write(EffectsOf(z));
+                    w.Write(animSpeed);
+                    w.Write(z.theSpeed);
                 }
             });
             Session.SendToClients(frame);
@@ -259,6 +435,11 @@ namespace FusionCoop.Coop
 
         private static void OnClientMessage(Packet pkt)
         {
+            if (pkt.Type == Msg.MagnetAttract)
+            {
+                ReplayMagnet(pkt);
+                return;
+            }
             if (pkt.Type == Msg.ZombieDied)
             {
                 uint id = pkt.Reader().ReadUInt32();
@@ -293,6 +474,9 @@ namespace FusionCoop.Coop
                 int animHash = r.ReadInt32();
                 float animTime = r.ReadSingle();
                 byte flags = r.ReadByte();
+                byte effects = r.ReadByte();
+                float animSpeed = r.ReadSingle();
+                float moveSpeed = r.ReadSingle();
                 bool dying = (flags & FlagDying) != 0;
                 Seen.Add(id);
 
@@ -303,7 +487,7 @@ namespace FusionCoop.Coop
                     if (z == null) continue;
                     rz = new Remote { Zombie = z };
                     ClientZombies[id] = rz;
-                    Puppets.Add(z.GetInstanceID());
+                    Puppets[z.GetInstanceID()] = id;
                     var p = z.transform.position;
                     z.transform.position = new Vector3(x, y, p.z);
                 }
@@ -312,8 +496,18 @@ namespace FusionCoop.Coop
                 var zz = rz.Zombie;
                 rz.Target = new Vector2(x, y);
                 ApplyHealth(zz, health, armor1, armor2);
-                ApplyAnim(zz, animHash, animTime);
-                if (dying) Kill(rz);
+                if (dying)
+                {
+                    ApplyAnim(zz, animHash, animTime, animSpeed);
+                    Kill(rz);
+                    continue;
+                }
+                // Hypnotized on the host: the game's own mind control (look, direction, team).
+                if ((flags & FlagMind) != 0 && !zz.isMindControlled) Replay(() => zz.SetMindControl(0));
+                ApplyEffects(zz, effects);
+                // After the effects: the host's animator speed wins over what they set.
+                ApplyAnim(zz, animHash, animTime, animSpeed);
+                ApplyMoveSpeed(zz, moveSpeed);
             }
 
             // Zombies the host no longer has.
@@ -394,10 +588,54 @@ namespace FusionCoop.Coop
             z.theSecondArmorHealth = armor2;
         }
 
-        private static void ApplyAnim(Zombie z, int hash, float time)
+        // ---------- status effects ----------
+
+        private const byte FxCold = 1, FxFreeze = 2, FxButter = 4;
+        // Long enough to outlast the host's own effect; the host's state message takes it off.
+        private const float EffectHold = 60f;
+
+        private static byte EffectsOf(Zombie z)
+        {
+            byte fx = 0;
+            if (z.HasBuff(EffectType.Cold)) fx |= FxCold;
+            if (z.HasBuff(EffectType.Freeze) || z.HasBuff(EffectType.IceDoomFreeze)) fx |= FxFreeze;
+            if (z.HasBuff(EffectType.Butter)) fx |= FxButter;
+            return fx;
+        }
+
+        private static void ApplyEffects(Zombie z, byte host)
+        {
+            byte local = EffectsOf(z);
+            if (local == host) return;
+            Replay(() =>
+            {
+                if ((host & FxCold) != 0 && (local & FxCold) == 0) z.SetCold(EffectHold, 0, false);
+                if ((host & FxFreeze) != 0 && (local & FxFreeze) == 0) z.SetFreeze(EffectHold, 0);
+                if ((host & FxButter) != 0 && (local & FxButter) == 0) z.Buttered(EffectHold, true);
+                if ((host & FxCold) == 0 && (local & FxCold) != 0) z.RemoveBuff(EffectType.Cold);
+                if ((host & FxFreeze) == 0 && (local & FxFreeze) != 0)
+                {
+                    z.RemoveBuff(EffectType.Freeze);
+                    z.RemoveBuff(EffectType.IceDoomFreeze);
+                }
+                if ((host & FxButter) == 0 && (local & FxButter) != 0) z.RemoveBuff(EffectType.Butter);
+            });
+        }
+
+        // The walk animation's pace is the animator's "Speed" parameter, set from theSpeed (0 while frozen,
+        // lower when cold) in Zombie.MoveUpdate, which puppets don't run.
+        private static void ApplyMoveSpeed(Zombie z, float speed)
+        {
+            z.theSpeed = speed;
+            if (z.anim != null) z.anim.SetFloat("Speed", speed);
+        }
+
+        private static void ApplyAnim(Zombie z, int hash, float time, float speed)
         {
             var anim = z.anim;
-            if (anim == null || hash == 0) return;
+            if (anim == null) return;
+            if (anim.speed != speed) anim.speed = speed;
+            if (hash == 0) return;
             if (anim.GetCurrentAnimatorStateInfo(0).fullPathHash == hash) return;
             if (!anim.HasState(0, hash)) return;
             anim.Play(hash, 0, time);
@@ -409,6 +647,7 @@ namespace FusionCoop.Coop
             rz.Killed = true;
             var z = rz.Zombie;
             Puppets.Remove(z.GetInstanceID());
+            if (z.theStatus == ZombieStatus.Dying) return; // already dying locally (e.g. pulled by a magnet)
             Replay(() => z.Die(0));
         }
 

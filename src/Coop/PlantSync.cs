@@ -73,6 +73,26 @@ namespace FusionCoop.Coop
             return any;
         }
 
+        // Client: drop presents left in a cell (their opening is the host's).
+        private static void RemovePresents(int col, int row)
+        {
+            var list = Lawnf.Get1x1Plants(col, row);
+            if (list == null) return;
+            var presents = new List<Plant>();
+            for (int i = 0; i < list.Count; i++)
+            {
+                var p = list[i];
+                if (p != null && p.TryCast<Present>() != null) presents.Add(p);
+            }
+            foreach (var p in presents)
+            {
+                Owners.Remove(p.GetInstanceID());
+                Replaying = true;
+                try { p.Die(Plant.DieReason.Default); }
+                finally { Replaying = false; }
+            }
+        }
+
         internal static void Init()
         {
             Session.HostGameHandler += OnHostMessage;
@@ -189,18 +209,23 @@ namespace FusionCoop.Coop
         // Anything else during battle is the game making a plant on its own (present opening, plant
         // effects): on the host it is sent to clients with the cell's owner; on clients it is blocked,
         // because random results would differ — the host's result arrives instead.
+        // SetPlant calls itself for fusions, so only the outermost call is sent, with the type it was
+        // asked for: the client's SetPlant then fuses with the plant in the cell the same way.
+        private static int _setPlantDepth;
+
         [HarmonyPatch(typeof(CreatePlant), nameof(CreatePlant.SetPlant))]
         internal static class SetPlantCapture
         {
             private static bool Prefix(ref Plant __result)
             {
+                _setPlantDepth++;
                 if (Session.Role != Role.Client || !Session.Ready || _capturing || Replaying) return true;
                 if (!BattleRunning) return true; // level setup before the battle stays local
                 __result = null;
                 return false;
             }
 
-            private static void Postfix(Plant __result)
+            private static void Postfix(Plant __result, int newColumn, int newRow, PlantType theSeedType)
             {
                 if (__result == null) return;
                 if (_capturing)
@@ -208,19 +233,50 @@ namespace FusionCoop.Coop
                     _captured = __result;
                     return;
                 }
+                if (_setPlantDepth != 1) return;
                 if (Replaying || Session.Role != Role.Host || !Session.Ready || !BattleRunning) return;
-                int col = __result.thePlantColumn, row = __result.thePlantRow;
+                int col = newColumn, row = newRow;
                 byte owner = CellOwner.TryGetValue(CellKey(col, row), out var o) ? o : (byte)255;
                 if (owner != 255) SetOwner(__result, owner);
-                var type = __result.thePlantType;
+                var result = __result.thePlantType;
                 Session.SendToClients(Protocol.Build(Msg.PlantSpawned, w =>
                 {
                     w.Write(owner);
                     w.Write((sbyte)col);
                     w.Write((sbyte)row);
-                    w.Write((int)type);
+                    w.Write((int)theSeedType);
+                    w.Write((int)result);
                 }));
             }
+
+            private static System.Exception Finalizer(System.Exception __exception)
+            {
+                _setPlantDepth--;
+                return __exception;
+            }
+        }
+
+        // Clients: a present opens on the host and the result arrives as PlantSpawned. Opening it locally
+        // would only fail (SetPlant is blocked) and drop a card instead.
+        private static bool PresentOpensLocally() =>
+            !(Session.Role == Role.Client && Session.Ready && !Replaying && BattleRunning);
+
+        [HarmonyPatch(typeof(Present), "RandomPlant")]
+        internal static class PresentRandomPatch
+        {
+            private static bool Prefix() => PresentOpensLocally();
+        }
+
+        [HarmonyPatch(typeof(Present), nameof(Present.SuperRandomPlant))]
+        internal static class PresentSuperRandomPatch
+        {
+            private static bool Prefix() => PresentOpensLocally();
+        }
+
+        [HarmonyPatch(typeof(Present), "HappyRandomPlant")]
+        internal static class PresentHappyRandomPatch
+        {
+            private static bool Prefix() => PresentOpensLocally();
         }
 
         // ---------- plant health ----------
@@ -261,12 +317,15 @@ namespace FusionCoop.Coop
                     w.Write((sbyte)p.thePlantRow);
                     w.Write((int)p.thePlantType);
                     w.Write(p.thePlantHealth);
+                    w.Write(p.thePlantMaxHealth);
                     w.Write(p.theShieldHealth);
                 }
             }));
         }
 
-        // Client: damage through the game's TakeDamage so damage looks (bitten wall-nut) match, then copy.
+        // Client: damage through the game's TakeDamage (hit flash, effects), copy the host's numbers, then
+        // redraw the damage look. Wall-nut-like plants pick their bitten sprite from health/maxHealth in
+        // ReplaceSprite, which their own TakeDamage calls but the base Plant.TakeDamage we reach does not.
         private static void ApplyPlantState(System.IO.BinaryReader r)
         {
             int count = r.ReadUInt16();
@@ -274,11 +333,12 @@ namespace FusionCoop.Coop
             {
                 int col = r.ReadSByte(), row = r.ReadSByte();
                 var type = (PlantType)r.ReadInt32();
-                int health = r.ReadInt32(), shield = r.ReadInt32();
+                int health = r.ReadInt32(), maxHealth = r.ReadInt32(), shield = r.ReadInt32();
                 var p = FindPlant(col, row, type);
                 if (p == null || p.thePlantType != type) continue;
                 int local = p.thePlantHealth + p.theShieldHealth;
                 int host = health + shield;
+                bool changed = host != local || p.thePlantMaxHealth != maxHealth;
                 if (host < local && host > 0)
                 {
                     int dmg = local - host;
@@ -288,8 +348,12 @@ namespace FusionCoop.Coop
                     finally { Replaying = false; }
                 }
                 if (p == null) continue;
+                p.thePlantMaxHealth = maxHealth;
                 p.thePlantHealth = health;
                 p.theShieldHealth = shield;
+                if (!changed) continue;
+                try { p.ReplaceSprite(); }
+                catch (System.Exception e) { FusionCoopMod.Log.Warning($"[plant] sprite update failed: {e.Message}"); }
             }
         }
 
@@ -378,11 +442,18 @@ namespace FusionCoop.Coop
                 {
                     byte owner = r.ReadByte();
                     int col = r.ReadSByte(), row = r.ReadSByte();
-                    var type = (PlantType)r.ReadInt32();
-                    var existing = FindPlant(col, row, type);
-                    var plant = existing != null && existing.thePlantType == type ? existing : Replay(col, row, type);
+                    var asked = (PlantType)r.ReadInt32();
+                    var result = (PlantType)r.ReadInt32();
+                    var plant = FindPlant(col, row, result);
+                    if (plant == null || plant.thePlantType != result)
+                    {
+                        // The opened present must not be in the cell when its result is planted.
+                        RemovePresents(col, row);
+                        plant = Replay(col, row, asked);
+                        if (plant == null && asked != result) plant = Replay(col, row, result);
+                    }
                     if (plant != null && owner != 255) SetOwner(plant, owner);
-                    FusionCoopMod.Log.Msg($"[plant] host made {type} c{col} r{row} -> {(plant != null ? "ok" : "FAILED")}");
+                    FusionCoopMod.Log.Msg($"[plant] host made {asked}->{result} c{col} r{row} -> {(plant != null ? plant.thePlantType.ToString() : "FAILED")}");
                     break;
                 }
                 case Msg.PlantState:

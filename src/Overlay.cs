@@ -19,31 +19,71 @@ namespace FusionCoop
             _toastUntil = Session.Now + seconds;
         }
 
+        // ---------- drawing helpers ----------
+
+        private static bool _styled;
+
+        // Bigger bold text, once. Some GUIStyle setters may be stripped in this build: then keep defaults.
+        private static void ApplyStyle()
+        {
+            if (_styled) return;
+            _styled = true;
+            try
+            {
+                var label = GUI.skin.label;
+                label.fontSize = 15;
+                label.fontStyle = FontStyle.Bold;
+            }
+            catch (System.Exception e)
+            {
+                FusionCoopMod.Log.Warning($"[ui] text style not available: {e.Message}");
+            }
+        }
+
+        // GUI.Box is see-through; stacking it gives a near-solid dark panel that reads on any background.
+        private static void Panel(Rect r)
+        {
+            var old = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0f, 0f, 0f, 1f);
+            for (int i = 0; i < 4; i++) GUI.Box(r, "");
+            GUI.backgroundColor = old;
+        }
+
+        // Text with a dark outline so it stays readable even outside a panel.
+        private static void Text(Rect r, string text, Color color)
+        {
+            var old = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, color.a);
+            GUI.Label(new Rect(r.x + 1, r.y + 1, r.width, r.height), text);
+            GUI.Label(new Rect(r.x - 1, r.y + 1, r.width, r.height), text);
+            GUI.Label(new Rect(r.x + 1, r.y - 1, r.width, r.height), text);
+            GUI.Label(new Rect(r.x - 1, r.y - 1, r.width, r.height), text);
+            GUI.color = color;
+            GUI.Label(r, text);
+            GUI.color = old;
+        }
+
+        private static readonly Color TextColor = new(1f, 1f, 1f, 1f);
+        private static readonly Color HeadColor = new(1f, 0.85f, 0.3f, 1f);
+        private static readonly Color HintColor = new(0.75f, 0.9f, 1f, 1f);
+
+        private static void Message(float y, string text)
+        {
+            float w = 520, cx = Screen.width / 2f;
+            Panel(new Rect(cx - w / 2, y, w, 34));
+            Text(new Rect(cx - w / 2 + 12, y + 7, w - 24, 24), text, TextColor);
+        }
+
         private static void DrawCenterMessages()
         {
-            float w = 420, cx = Screen.width / 2f;
             if (Coop.SpeedSync.HostPaused)
-            {
-                GUI.Box(new Rect(cx - w / 2, Screen.height * 0.3f, w, 34), "");
-                GUI.Label(new Rect(cx - w / 2 + 12, Screen.height * 0.3f + 7, w - 24, 22), "PAUSED BY HOST - waiting for the host to resume");
-            }
+                Message(Screen.height * 0.3f, "PAUSED BY HOST - waiting for the host to resume");
             string rejoin = Coop.LevelSync.RejoinText();
-            if (rejoin != null)
-            {
-                GUI.Box(new Rect(cx - w / 2, 12, w, 30), "");
-                GUI.Label(new Rect(cx - w / 2 + 12, 17, w - 24, 22), rejoin);
-            }
+            if (rejoin != null) Message(12, rejoin);
             string ready = Coop.LevelSync.ReadyText();
-            if (ready != null)
-            {
-                GUI.Box(new Rect(cx - w / 2, 12, w, 30), "");
-                GUI.Label(new Rect(cx - w / 2 + 12, 17, w - 24, 22), ready);
-            }
+            if (ready != null) Message(12, ready);
             if (_toast != null && Session.Now < _toastUntil)
-            {
-                GUI.Box(new Rect(cx - w / 2, Screen.height * 0.3f + 44, w, 30), "");
-                GUI.Label(new Rect(cx - w / 2 + 12, Screen.height * 0.3f + 49, w - 24, 22), _toast);
-            }
+                Message(Screen.height * 0.3f + 44, _toast);
         }
 
         internal static readonly Color[] PlayerColors =
@@ -56,11 +96,14 @@ namespace FusionCoop
 
         internal static void Draw()
         {
+            ApplyStyle();
             DrawCursors();
             DrawCenterMessages();
             if (!PanelOpen)
             {
-                GUI.Label(new Rect(10, 10, 400, 22), $"FusionCoop: {Session.Status}   [F8] panel");
+                string mini = $"FusionCoop: {Session.Status}   [F8] panel";
+                Panel(new Rect(6, 6, 440, 30));
+                Text(new Rect(14, 11, 430, 24), mini, TextColor);
                 return;
             }
 
@@ -74,16 +117,21 @@ namespace FusionCoop
             string players = "";
             foreach (var kv in Session.Names) players += $"P{kv.Key + 1}:{kv.Value}  ";
 
-            string text =
-                "FusionCoop 0.8.2 (zombie sync test)\n" +
-                $"status: {Session.Status}\n" +
-                $"role: {role}    ping: {rtt}\n" +
-                $"players: {players}\n" +
-                $"join IP: {IpDraft}_   port {FusionCoopMod.Port}\n" +
-                "type digits/. to edit IP, Backspace to delete\n" +
-                "[F9] host   [F10] join   [F11] leave   [F8] hide";
-            GUI.Box(new Rect(10, 10, 420, 150), "");
-            GUI.Label(new Rect(20, 16, 400, 140), text);
+            const float x = 6, y = 6, w = 500, line = 22;
+            Panel(new Rect(x, y, w, 12 + line * 7));
+            float ty = y + 6;
+            void Row(string t, Color c)
+            {
+                Text(new Rect(x + 12, ty, w - 24, line + 4), t, c);
+                ty += line;
+            }
+            Row("FusionCoop 0.8.6", HeadColor);
+            Row($"status: {Session.Status}", TextColor);
+            Row($"role: {role}    ping: {rtt}", TextColor);
+            Row($"players: {players}", TextColor);
+            Row($"join IP: {IpDraft}_   port {FusionCoopMod.Port}", TextColor);
+            Row("type digits / . to edit IP, Backspace to delete", HintColor);
+            Row("[F9] host   [F10] join   [F11] leave   [F8] hide", HintColor);
         }
 
         private static void DrawCursors()
@@ -110,8 +158,8 @@ namespace FusionCoop
                 var old = GUI.color;
                 GUI.color = color;
                 GUI.Box(new Rect(gx - 4, gy - 4, 8, 8), "");
-                GUI.Label(new Rect(gx + 8, gy - 10, 260, 22), $"P{kv.Key + 1} {name}{cell}{state}");
                 GUI.color = old;
+                Text(new Rect(gx + 8, gy - 11, 320, 24), $"P{kv.Key + 1} {name}{cell}{state}", color);
             }
         }
     }

@@ -111,6 +111,7 @@ namespace FusionCoop.Net
             Role = Role.None;
             RttMs = -1;
             Coop.PlantSync.Reset();
+            Coop.PlantAttackSync.Reset();
             Coop.LevelSync.Reset();
             Coop.ZombieSync.Reset();
             Status = "offline";

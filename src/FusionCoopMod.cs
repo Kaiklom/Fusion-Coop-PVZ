@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.2", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.6", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -42,6 +42,7 @@ namespace FusionCoop
             Coop.SpeedSync.Init();
             Coop.LevelSync.Init();
             Coop.ZombieSync.Init();
+            Coop.PlantAttackSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -64,6 +65,19 @@ namespace FusionCoop
                 typeof(Coop.ZombieSync.AttackUpdatePatch),
                 typeof(Coop.ZombieSync.NewZombieUpdatePatch),
                 typeof(Coop.PlantSync.PlantDiePatch),
+                typeof(Coop.PlantSync.PresentRandomPatch),
+                typeof(Coop.PlantSync.PresentSuperRandomPatch),
+                typeof(Coop.PlantSync.PresentHappyRandomPatch),
+                typeof(Coop.ZombieSync.SetFreezePatch),
+                typeof(Coop.ZombieSync.SetColdPatch),
+                typeof(Coop.ZombieSync.ButteredPatch),
+                typeof(Coop.ZombieSync.SetMindControlPatch),
+                typeof(Coop.ZombieSync.HammerUsePatch),
+                typeof(Coop.ZombieSync.HammerCrushPatch),
+                typeof(Coop.ZombieSync.MagnetAttractPatch),
+                typeof(Coop.PlantAttackSync.ShootUpdatePatch),
+                typeof(Coop.PlantAttackSync.SetTriggerPatch),
+                typeof(Coop.PlantAttackSync.SetBoolPatch),
             });
             if (_probes.Value) PatchProbes();
         }
