@@ -58,7 +58,7 @@ namespace FusionCoop.Coop
             {
                 foreach (var name in ShootClasses)
                 {
-                    var type = AccessTools.TypeByName("Il2Cpp." + name);
+                    var type = typeof(Plant).Assembly.GetType("Il2Cpp." + name);
                     var m = type != null ? AccessTools.DeclaredMethod(type, "PlantShootUpdate") : null;
                     if (m != null) yield return m;
                     else FusionCoopMod.Log.Warning($"[attack] {name}.PlantShootUpdate not found");

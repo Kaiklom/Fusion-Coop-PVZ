@@ -469,7 +469,20 @@ namespace FusionCoop.Coop
                     if (plant == null || plant.thePlantType != type) break;
                     Owners.Remove(plant.GetInstanceID());
                     Replaying = true;
-                    try { plant.Die(reason); }
+                    try
+                    {
+                        // Run over or smashed: the game's own flattening, which then kills the plant.
+                        if (reason == Plant.DieReason.Crash || reason == Plant.DieReason.CrashInWater)
+                        {
+                            plant.Crashed(0, 0, null);
+                            if (plant != null && plant.thePlantHealth > 0 && !plant.isCrashed) plant.Die(reason);
+                        }
+                        else plant.Die(reason);
+                    }
+                    catch (System.Exception e)
+                    {
+                        FusionCoopMod.Log.Warning($"[plant] death replay failed: {e.Message}");
+                    }
                     finally { Replaying = false; }
                     break;
                 }
@@ -517,13 +530,38 @@ namespace FusionCoop.Coop
             reason != Plant.DieReason.ByLevelUp && reason != Plant.DieReason.ByShovel &&
             reason != Plant.DieReason.Hid;
 
+        // Deaths zombies cause by reaching a plant without eating it (Gargantuar smash, vehicles, ...).
+        private static bool ZombieCaused(Plant.DieReason reason) =>
+            reason == Plant.DieReason.Crash || reason == Plant.DieReason.CrashInWater ||
+            reason == Plant.DieReason.Wheel || reason == Plant.DieReason.BySteal ||
+            reason == Plant.DieReason.ByFreeze;
+
+        // Client during battle: plants only lose health or die from zombies when the host says so.
+        // Puppet zombies still play the host's animations, and some of those hurt plants on their own
+        // (Gargantuar smash, catapult balls, vehicles running over plants); those hits are dropped here.
+        // Player actions (shovel, fusion, glove, refunds) and plants using themselves up stay local.
+        private static bool ClientGuard => Session.Role == Role.Client && Session.Ready && !Replaying && BattleRunning;
+
+        [HarmonyPatch(typeof(Plant), nameof(Plant.TakeDamage))]
+        internal static class ClientPlantDamagePatch
+        {
+            private static bool Prefix() => !ClientGuard;
+        }
+
+        [HarmonyPatch(typeof(Plant), nameof(Plant.Crashed))]
+        internal static class ClientPlantCrashedPatch
+        {
+            private static bool Prefix() => !ClientGuard;
+        }
+
         [HarmonyPatch(typeof(Plant), nameof(Plant.Die))]
         internal static class PlantDiePatch
         {
-            private static void Prefix(Plant __instance, Plant.DieReason reason)
+            private static bool Prefix(Plant __instance, Plant.DieReason reason)
             {
-                if (Session.Role != Role.Host || !Session.Ready || Replaying || __instance == null) return;
-                if (!SendsDeath(reason) || Board.Instance == null) return;
+                if (ClientGuard && ZombieCaused(reason)) return false;
+                if (Session.Role != Role.Host || !Session.Ready || Replaying || __instance == null) return true;
+                if (!SendsDeath(reason) || Board.Instance == null) return true;
                 int col = __instance.thePlantColumn, row = __instance.thePlantRow;
                 var type = __instance.thePlantType;
                 Session.SendToClients(Protocol.Build(Msg.PlantDied, w =>
@@ -533,6 +571,7 @@ namespace FusionCoop.Coop
                     w.Write((int)type);
                     w.Write((int)reason);
                 }));
+                return true;
             }
         }
 

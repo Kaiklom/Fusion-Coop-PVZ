@@ -118,20 +118,23 @@ namespace FusionCoop
             foreach (var kv in Session.Names) players += $"P{kv.Key + 1}:{kv.Value}  ";
 
             const float x = 6, y = 6, w = 500, line = 22;
-            Panel(new Rect(x, y, w, 12 + line * 7));
+            int rows = Coop.TestTools.Enabled ? 8 : 7;
+            Panel(new Rect(x, y, w, 12 + line * rows));
             float ty = y + 6;
             void Row(string t, Color c)
             {
                 Text(new Rect(x + 12, ty, w - 24, line + 4), t, c);
                 ty += line;
             }
-            Row("FusionCoop 0.8.6", HeadColor);
+            Row("FusionCoop 0.8.8", HeadColor);
             Row($"status: {Session.Status}", TextColor);
             Row($"role: {role}    ping: {rtt}", TextColor);
             Row($"players: {players}", TextColor);
             Row($"join IP: {IpDraft}_   port {FusionCoopMod.Port}", TextColor);
             Row("type digits / . to edit IP, Backspace to delete", HintColor);
             Row("[F9] host   [F10] join   [F11] leave   [F8] hide", HintColor);
+            if (Coop.TestTools.Enabled)
+                Row($"test: [F5/F6] {Coop.TestTools.Selected}  [9] spawn  [F4] +sun", HeadColor);
         }
 
         private static void DrawCursors()

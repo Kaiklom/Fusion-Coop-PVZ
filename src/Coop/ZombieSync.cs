@@ -21,7 +21,7 @@ namespace FusionCoop.Coop
     // - Waves: the client's Board.NewZombieUpdate is blocked except for one run each time the host's wave
     //   number goes up, so the "huge wave" banner and sounds play locally; the counters are copied.
     // Sending full state (instead of only events) also covers late joins and lost timing.
-    internal static class ZombieSync
+    internal static partial class ZombieSync
     {
         private const float SendInterval = 0.1f;
         private const byte FlagDying = 1, FlagMind = 2;
@@ -63,6 +63,8 @@ namespace FusionCoop.Coop
             HostIds.Clear();
             ClientZombies.Clear();
             Puppets.Clear();
+            Drivers.Clear();
+            NotDrivers.Clear();
             _clientBoardId = 0;
             _hostWave = -1;
             _hugeShownForNext = false;
@@ -91,10 +93,15 @@ namespace FusionCoop.Coop
                     __result = null;
                     return false;
                 }
+                if (Session.Role == Role.Host) _spawningId = _nextId; // the id Track will give it
                 return true;
             }
 
-            private static void Postfix(Zombie __result) => Track(__result);
+            private static void Postfix(Zombie __result)
+            {
+                if (Session.Role == Role.Host) _spawningId = 0;
+                Track(__result);
+            }
         }
 
         [HarmonyPatch(typeof(CreateZombie), nameof(CreateZombie.SetZombieWithMindControl))]
@@ -181,18 +188,17 @@ namespace FusionCoop.Coop
             private static bool Prefix() => !(IsClient && !Replaying && Board.Instance != null);
 
             // Host: tell clients right away instead of waiting for the next state message.
-            private static void Postfix(Zombie __instance)
+            private static void Postfix(Zombie __instance, int reason)
             {
                 if (Session.Role != Role.Host || !Session.Ready || __instance == null) return;
                 if (!HostIds.TryGetValue(__instance.GetInstanceID(), out uint id)) return;
-                // Dying while a magnet pulls it (iron zombies): sent with the magnet message instead,
-                // so clients run the pull before the death.
-                if (_attracting != null && _attracting.Pointer == __instance.Pointer)
+                // Dying from a magnet pull (iron zombies) or a fire: sent with that event instead.
+                if (_eventZombie != null && _eventZombie.Pointer == __instance.Pointer)
                 {
-                    _attractKilled = true;
+                    _eventKilled = true;
                     return;
                 }
-                SendDied(id);
+                SendDied(id, reason);
             }
         }
 
@@ -236,19 +242,93 @@ namespace FusionCoop.Coop
 
         // Magnet plants pulling metal items (armor, ladders, doors): the host decides, clients replay it
         // on the same puppet. Without this the host's lost armor reaches clients as damage and just falls.
-        private static Zombie _attracting; // host: zombie a magnet is pulling right now
-        private static bool _attractKilled;
+        // ---------- ladders ----------
+        // A ladder zombie touching a defensive plant starts its "put ladder" animation; at the animation
+        // event (AnimSetLadder) the game puts a Ladder grid item on its ladderTarget plant. The host's is
+        // replayed on clients by the same puppet; puppets don't start it on their own.
+
+        [HarmonyPatch(typeof(LadderZombie), "OnTriggerEnter2D")]
+        internal static class LadderEnterPatch
+        {
+            private static bool Prefix(LadderZombie __instance) => !IsPuppet(__instance);
+        }
+
+        [HarmonyPatch(typeof(LadderZombie), "OnTriggerStay2D")]
+        internal static class LadderStayPatch
+        {
+            private static bool Prefix(LadderZombie __instance) => !IsPuppet(__instance);
+        }
+
+        [HarmonyPatch(typeof(LadderZombie), "AnimSetLadder")]
+        internal static class SetLadderPatch
+        {
+            private static bool Prefix(LadderZombie __instance, out Plant __state)
+            {
+                var t = __instance.ladderTarget;
+                // Only a plant without a ladder yet gets one.
+                __state = t != null && t.Ladder == null ? t : null;
+                return Replaying || !IsPuppet(__instance);
+            }
+
+            private static void Postfix(LadderZombie __instance, Plant __state)
+            {
+                if (Session.Role != Role.Host || !Session.Ready) return;
+                var t = __state;
+                if (t == null || t.Ladder == null) return;
+                if (!HostIds.TryGetValue(__instance.GetInstanceID(), out uint id)) return;
+                int col = t.thePlantColumn, row = t.thePlantRow;
+                var type = t.thePlantType;
+                Session.SendToClients(Protocol.Build(Msg.LadderPlaced, w =>
+                {
+                    w.Write(id);
+                    w.Write((sbyte)col);
+                    w.Write((sbyte)row);
+                    w.Write((int)type);
+                }));
+            }
+        }
+
+        private static void ReplayLadder(Packet pkt)
+        {
+            var r = pkt.Reader();
+            uint id = r.ReadUInt32();
+            int col = r.ReadSByte(), row = r.ReadSByte();
+            var type = (PlantType)r.ReadInt32();
+            var plant = PlantSync.FindPlant(col, row, type);
+            if (plant == null || plant.thePlantType != type)
+            {
+                FusionCoopMod.Log.Warning($"[zombie] ladder: no {type} at c{col} r{row}");
+                return;
+            }
+            if (plant.Ladder != null) return;
+            LadderZombie lz = null;
+            if (ClientZombies.TryGetValue(id, out var rz) && rz.Zombie != null && !rz.Killed)
+                lz = rz.Zombie.TryCast<LadderZombie>();
+            if (lz != null)
+            {
+                lz.ladderTarget = plant;
+                Replay(() => lz.AnimSetLadder());
+            }
+            // The zombie is gone here, or it did not place it: just put the ladder.
+            if (plant.Ladder == null) Replay(() => GridItem.SetGridItem(col, row, GridItemType.Ladder, 0));
+            FusionCoopMod.Log.Msg($"[zombie] ladder #{id} on {type} c{col} r{row}: {(plant.Ladder != null ? "ok" : "FAILED")}");
+        }
+
+        // Host: zombie a magnet is pulling / a fire is burning right now. Its death is sent with that
+        // event instead of on its own, so clients replay the event before the death.
+        private static Zombie _eventZombie;
+        private static bool _eventKilled;
 
         [HarmonyPatch(typeof(Magnetshroom), "TryAttrackZombie")]
         internal static class MagnetAttractPatch
         {
             private static bool Prefix(Zombie zombie, ref bool __result, out Zombie __state)
             {
-                __state = _attracting;
+                __state = _eventZombie;
                 if (Session.Role == Role.Host)
                 {
-                    _attracting = zombie;
-                    _attractKilled = false;
+                    _eventZombie = zombie;
+                    _eventKilled = false;
                 }
                 if (Replaying || !IsPuppet(zombie)) return true;
                 __result = false;
@@ -259,8 +339,8 @@ namespace FusionCoop.Coop
             {
                 if (Session.Role != Role.Host || !Session.Ready || zombie == null) return;
                 if (!HostIds.TryGetValue(zombie.GetInstanceID(), out uint id)) return;
-                bool died = _attractKilled;
-                _attractKilled = false;
+                bool died = _eventKilled;
+                _eventKilled = false;
                 if (!__result)
                 {
                     if (died) SendDied(id);
@@ -280,12 +360,17 @@ namespace FusionCoop.Coop
 
             private static System.Exception Finalizer(System.Exception __exception, Zombie __state)
             {
-                _attracting = __state;
+                _eventZombie = __state;
                 return __exception;
             }
         }
 
-        private static void SendDied(uint id) => Session.SendToClients(Protocol.Build(Msg.ZombieDied, w => w.Write(id)));
+        private static void SendDied(uint id, int reason = 0) =>
+            Session.SendToClients(Protocol.Build(Msg.ZombieDied, w =>
+            {
+                w.Write(id);
+                w.Write(reason);
+            }));
 
         private static void ReplayMagnet(Packet pkt)
         {
@@ -435,6 +520,11 @@ namespace FusionCoop.Coop
 
         private static void OnClientMessage(Packet pkt)
         {
+            if (pkt.Type == Msg.LadderPlaced)
+            {
+                ReplayLadder(pkt);
+                return;
+            }
             if (pkt.Type == Msg.MagnetAttract)
             {
                 ReplayMagnet(pkt);
@@ -442,10 +532,13 @@ namespace FusionCoop.Coop
             }
             if (pkt.Type == Msg.ZombieDied)
             {
-                uint id = pkt.Reader().ReadUInt32();
-                if (ClientZombies.TryGetValue(id, out var dead)) Kill(dead);
+                var dr = pkt.Reader();
+                uint id = dr.ReadUInt32();
+                int reason = dr.ReadInt32();
+                if (ClientZombies.TryGetValue(id, out var dead)) Kill(dead, reason);
                 return;
             }
+            if (HandleExtraMessage(pkt)) return;
             if (pkt.Type != Msg.ZombieState) return;
             var board = Board.Instance;
             var cz = CreateZombie.Instance;
@@ -483,7 +576,7 @@ namespace FusionCoop.Coop
                 if (!ClientZombies.TryGetValue(id, out var rz) || rz.Zombie == null)
                 {
                     if (dying) continue; // don't spawn something that is already dying
-                    var z = Spawn(cz, row, type, x, (flags & FlagMind) != 0);
+                    var z = Spawn(cz, id, row, type, x, (flags & FlagMind) != 0);
                     if (z == null) continue;
                     rz = new Remote { Zombie = z };
                     ClientZombies[id] = rz;
@@ -641,22 +734,27 @@ namespace FusionCoop.Coop
             anim.Play(hash, 0, time);
         }
 
-        private static void Kill(Remote rz)
+        private static void Kill(Remote rz, int reason = 0)
         {
             if (rz.Killed || rz.Zombie == null) return;
             rz.Killed = true;
             var z = rz.Zombie;
             Puppets.Remove(z.GetInstanceID());
-            if (z.theStatus == ZombieStatus.Dying) return; // already dying locally (e.g. pulled by a magnet)
-            Replay(() => z.Die(0));
+            if (z.theStatus == ZombieStatus.Dying) return; // already dying locally (magnet pull, fire)
+            Replay(() => CallDie(z, reason));
         }
 
-        private static Zombie Spawn(CreateZombie cz, int row, ZombieType type, float x, bool mind)
+        private static Zombie Spawn(CreateZombie cz, uint id, int row, ZombieType type, float x, bool mind)
         {
             Zombie z = null;
-            Replay(() => z = mind
-                ? cz.SetZombieWithMindControl(row, type, x, false)
-                : cz.SetZombie(row, type, x, false));
+            _spawningId = id;
+            try
+            {
+                Replay(() => z = mind
+                    ? cz.SetZombieWithMindControl(row, type, x, false)
+                    : cz.SetZombie(row, type, x, false));
+            }
+            finally { _spawningId = 0; }
             return z;
         }
 
@@ -673,6 +771,7 @@ namespace FusionCoop.Coop
                 var target = new Vector3(rz.Target.x, rz.Target.y, p.z);
                 // Snap when far off (spawn, teleports), ease otherwise.
                 z.transform.position = (target - p).sqrMagnitude > 4f ? target : Vector3.Lerp(p, target, t);
+                LayIceRoad(rz);
             }
         }
 

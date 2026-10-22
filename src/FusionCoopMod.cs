@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.6", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.8", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -21,6 +21,7 @@ namespace FusionCoop
         private static MelonPreferences_Entry<bool> _probes;
         private static MelonPreferences_Entry<string> _autoStart;
         private static MelonPreferences_Entry<int> _autoLevel;
+        private static MelonPreferences_Entry<bool> _testTools;
         private static double _autoLevelAt = -1, _autoForceAt = -1;
         private static bool _autoStarted;
 
@@ -35,6 +36,8 @@ namespace FusionCoop
             _probes = cat.CreateEntry("ProbeLog", true, "Log game calls (plant/sun/shovel) for research");
             _autoStart = cat.CreateEntry("AutoStart", "", "Testing: 'host' or 'join' starts the session automatically");
             _autoLevel = cat.CreateEntry("AutoLevel", 0, "Testing: host enters this Adventure level once a client joins and starts it; clients auto-ready (0 = off)");
+            _testTools = cat.CreateEntry("TestTools", true, "Testing: F5/F6 pick a zombie, 9 (host) spawns it in the lane under the cursor, F4 +1000 sun");
+            Coop.TestTools.Enabled = _testTools.Value;
             Overlay.IpDraft = _lastIp.Value;
 
             Coop.PlantSync.Init();
@@ -75,6 +78,15 @@ namespace FusionCoop
                 typeof(Coop.ZombieSync.HammerUsePatch),
                 typeof(Coop.ZombieSync.HammerCrushPatch),
                 typeof(Coop.ZombieSync.MagnetAttractPatch),
+                typeof(Coop.ZombieSync.LadderEnterPatch),
+                typeof(Coop.ZombieSync.LadderStayPatch),
+                typeof(Coop.ZombieSync.SetLadderPatch),
+                typeof(Coop.ZombieSync.SetWeaponPatch),
+                typeof(Coop.ZombieSync.CharredPatch),
+                typeof(Coop.ZombieSync.JacksonSummonPatch),
+                typeof(Coop.ZombieSync.JacksonAnimSummonPatch),
+                typeof(Coop.PlantSync.ClientPlantDamagePatch),
+                typeof(Coop.PlantSync.ClientPlantCrashedPatch),
                 typeof(Coop.PlantAttackSync.ShootUpdatePatch),
                 typeof(Coop.PlantAttackSync.SetTriggerPatch),
                 typeof(Coop.PlantAttackSync.SetBoolPatch),
@@ -198,6 +210,7 @@ namespace FusionCoop
         {
             if (Input.GetKeyDown(KeyCode.F8)) Overlay.PanelOpen = !Overlay.PanelOpen;
             if (Input.GetKeyDown(KeyCode.F12)) Coop.LevelSync.ForceStart();
+            Coop.TestTools.HandleKeys();
             // In-room actions work with the panel hidden; the rejoin prompt shows on screen anyway.
             if (Input.GetKeyDown(KeyCode.F10) && Coop.LevelSync.CanRejoin)
             {
@@ -222,7 +235,8 @@ namespace FusionCoop
                 Session.Stop();
             }
 
-            // IP editing: digits (top row or keypad), '.', Backspace.
+            // IP editing: digits (top row or keypad), '.', Backspace. Off in battle with test keys on (9 spawns).
+            if (Coop.TestTools.Enabled && Coop.TestTools.InBattle) return;
             for (int i = 0; i <= 9; i++)
             {
                 if (Input.GetKeyDown(KeyCode.Alpha0 + i) || Input.GetKeyDown(KeyCode.Keypad0 + i))

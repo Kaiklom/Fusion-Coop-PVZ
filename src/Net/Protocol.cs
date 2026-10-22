@@ -56,7 +56,7 @@ namespace FusionCoop.Net
         // int animatorStateHash, float animatorTime, byte flags[1 dying, 2 mind controlled],
         // byte effects[1 cold, 2 freeze, 4 butter], float animatorSpeed, float moveSpeed)
         ZombieState = 49,
-        // host -> clients: uint zombie id (Zombie.Die ran on the host)
+        // host -> clients: uint zombie id, int reason (Zombie.Die ran on the host)
         ZombieDied = 50,
         // host -> clients: sbyte col, sbyte row, int plantType, int dieReason (eaten, crushed, used up...)
         PlantDied = 51,
@@ -76,11 +76,20 @@ namespace FusionCoop.Net
         // host -> clients: sbyte col, sbyte row, int plantType, uint zombie id, bool zombieDied (a magnet
         // plant pulled that zombie's metal item: armor, ladder, door, or the whole iron zombie)
         MagnetAttract = 56,
+        // host -> clients: uint zombie id, sbyte col, sbyte row, int plantType (a ladder zombie put its
+        // ladder on that plant)
+        LadderPlaced = 57,
+        // host -> clients: uint new zombie id, uint summoner id, float x, int row (a Dancing Zombie
+        // summoned a backup dancer, which rises from the ground)
+        ZombieSummoned = 58,
+        // host -> clients: uint zombie id, int damage, int damageType, bool died (fire burned a zombie;
+        // dying from it leaves ash)
+        ZombieCharred = 59,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 17;
+        internal const int Version = 19;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
