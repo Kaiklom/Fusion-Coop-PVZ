@@ -10,11 +10,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
-    <!-- Game install (this repo sits inside it) -->
-    <GameDir>$(MSBuildProjectDirectory)\..</GameDir>
+    <!-- Game version to build against: ..\games\<version> (dotnet build -p:GameVersion=4.0.5) -->
+    <GameVersion Condition="'$(GameVersion)' == ''">3.8.1</GameVersion>
+    <GameDir>$(MSBuildProjectDirectory)\..\games\$(GameVersion)</GameDir>
     <MLDir>$(GameDir)\MelonLoader</MLDir>
     <!-- Second install for two-window testing on one PC -->
-    <Client2Dir>$(GameDir)\..\PVZF-3.8.1_client2</Client2Dir>
+    <Client2Dir>$(GameDir)_client2</Client2Dir>
   </PropertyGroup>
 
   <ItemGroup>
