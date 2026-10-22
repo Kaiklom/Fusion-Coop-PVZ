@@ -639,17 +639,21 @@ namespace FusionCoop.Coop
             }
             else if (wave > _hostWave && board.theWave < wave)
             {
+                board.theWave = wave - 1;
+                board.timeUntilNextWave = 0f;
+                board.isHugeWave = false;
                 if (_hugeShownForNext)
                 {
-                    _hugeShownForNext = false; // warning already played
+                    // The warning already played: run the step as if its countdown just ended, so the
+                    // wave goes up without a second siren and the final-wave banner shows on the last
+                    // wave. The game warns before waves 10, 20, ...; there, isHugeWave skips the siren
+                    // and an overlong countdown wraps to 0 (= done).
+                    _hugeShownForNext = false;
+                    bool warnedWave = wave % 10 == 0;
+                    board.isHugeWave = warnedWave;
+                    board.hugeWaveCountDown = warnedWave ? 1e6f : 0f;
                 }
-                else
-                {
-                    board.theWave = wave - 1;
-                    board.timeUntilNextWave = 0f;
-                    board.isHugeWave = false;
-                    _allowWaveStep = true;
-                }
+                _allowWaveStep = true;
             }
             _hostWave = wave;
             _hostHuge = huge;

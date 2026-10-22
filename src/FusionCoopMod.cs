@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.9", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.10", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
