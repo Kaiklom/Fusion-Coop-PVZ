@@ -234,7 +234,8 @@ namespace FusionCoop.Coop
             {
                 if (IsClient && !_replaying)
                 {
-                    Overlay.Toast("Only the host chooses the level");
+                    // Leaving the trophy screen with the host: the host's next level arrives on its own.
+                    if (!PrizeSync.GoingBack) Overlay.Toast("Only the host chooses the level");
                     return false;
                 }
                 return true;

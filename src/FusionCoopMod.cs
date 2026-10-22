@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.8.10", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.9.0", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -47,6 +47,8 @@ namespace FusionCoop
             Coop.ZombieSync.Init();
             Coop.PlantAttackSync.Init();
             Coop.MowerSync.Init();
+            Coop.GraveSync.Init();
+            Coop.PrizeSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -93,6 +95,15 @@ namespace FusionCoop
                 typeof(Coop.PlantAttackSync.SetBoolPatch),
                 typeof(Coop.MowerSync.TriggerPatch),
                 typeof(Coop.MowerSync.StartMovePatch),
+                typeof(Coop.GraveSync.SetGridItemPatch),
+                typeof(Coop.GraveSync.TakeDamagePatch),
+                typeof(Coop.GraveSync.DiePatch),
+                typeof(Coop.GraveSync.SetZombiePatch),
+                typeof(Coop.GraveSync.PreviewPatch),
+                typeof(Coop.PrizeSync.WinPatch),
+                typeof(Coop.PrizeSync.ClickPatch),
+                typeof(Coop.PrizeSync.ClickedPatch),
+                typeof(Coop.PrizeSync.GoBackPatch),
             });
             if (_probes.Value) PatchProbes();
         }
@@ -144,6 +155,7 @@ namespace FusionCoop
             Coop.LevelSync.Update();
             Coop.ZombieSync.Update();
             Coop.PlantSync.Update();
+            Coop.GraveSync.Update();
         }
 
         // Testing: host enters level AutoLevel 3 s after a client joins, forces the start 25 s later.

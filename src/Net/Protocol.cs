@@ -87,11 +87,23 @@ namespace FusionCoop.Net
         ZombieCharred = 59,
         // host -> clients: sbyte row, float x (a lawn mower started; clients start theirs in that row)
         MowerStarted = 60,
+        // host -> clients, 1 Hz: ushort count, then count x (sbyte col, sbyte row, int graveType)
+        GraveState = 61,
+        // host -> clients: sbyte col, sbyte row (that grave was destroyed)
+        GraveDied = 62,
+        // host -> clients: sbyte col, sbyte row, int graveType, int zombieType (a zombie rises from that grave)
+        GraveSummon = 63,
+        // host -> clients: (empty) the host's board won (BoardVictory.Win): drop the trophy
+        LevelWon = 64,
+        // host -> clients: (empty) the host collected the trophy (PrizeMgr.Clicked)
+        PrizeClicked = 65,
+        // host -> clients: (empty) the host leaves the trophy screen (PrizeMgr.GoBack)
+        PrizeGoBack = 66,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 20;
+        internal const int Version = 22;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
