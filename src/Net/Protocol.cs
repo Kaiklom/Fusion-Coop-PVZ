@@ -85,11 +85,13 @@ namespace FusionCoop.Net
         // host -> clients: uint zombie id, int damage, int damageType, bool died (fire burned a zombie;
         // dying from it leaves ash)
         ZombieCharred = 59,
+        // host -> clients: sbyte row, float x (a lawn mower started; clients start theirs in that row)
+        MowerStarted = 60,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 19;
+        internal const int Version = 20;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
