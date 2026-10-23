@@ -24,7 +24,7 @@ namespace FusionCoop.Coop
     internal static partial class ZombieSync
     {
         private const float SendInterval = 0.1f;
-        private const byte FlagDying = 1, FlagMind = 2;
+        private const byte FlagDying = 1, FlagMind = 2, FlagAttacking = 4;
 
         // Host
         private static uint _nextId = 1;
@@ -484,6 +484,7 @@ namespace FusionCoop.Coop
                     byte flags = 0;
                     if (z.theStatus == ZombieStatus.Dying) flags |= FlagDying;
                     if (z.isMindControlled) flags |= FlagMind;
+                    if (z.isAttacking) flags |= FlagAttacking;
                     int animHash = 0;
                     float animTime = 0, animSpeed = 1;
                     var anim = z.anim;
@@ -499,7 +500,7 @@ namespace FusionCoop.Coop
                     w.Write((sbyte)z.theZombieRow);
                     w.Write(p.x);
                     w.Write(p.y);
-                    w.Write(z.theHealth);
+                    w.Write((long)z.theHealth); // long since 4.0.5
                     w.Write(z.theFirstArmorHealth);
                     w.Write(z.theSecondArmorHealth);
                     w.Write(animHash);
@@ -563,7 +564,8 @@ namespace FusionCoop.Coop
                 var type = (ZombieType)r.ReadInt32();
                 int row = r.ReadSByte();
                 float x = r.ReadSingle(), y = r.ReadSingle();
-                int health = r.ReadInt32(), armor1 = r.ReadInt32(), armor2 = r.ReadInt32();
+                long health = r.ReadInt64();
+                int armor1 = r.ReadInt32(), armor2 = r.ReadInt32();
                 int animHash = r.ReadInt32();
                 float animTime = r.ReadSingle();
                 byte flags = r.ReadByte();
@@ -591,7 +593,7 @@ namespace FusionCoop.Coop
                 ApplyHealth(zz, health, armor1, armor2);
                 if (dying)
                 {
-                    ApplyAnim(zz, animHash, animTime, animSpeed);
+                    ApplyAnim(zz, animHash, animTime, animSpeed, (flags & FlagAttacking) != 0);
                     Kill(rz);
                     continue;
                 }
@@ -599,7 +601,7 @@ namespace FusionCoop.Coop
                 if ((flags & FlagMind) != 0 && !zz.isMindControlled) Replay(() => zz.SetMindControl(0));
                 ApplyEffects(zz, effects);
                 // After the effects: the host's animator speed wins over what they set.
-                ApplyAnim(zz, animHash, animTime, animSpeed);
+                ApplyAnim(zz, animHash, animTime, animSpeed, (flags & FlagAttacking) != 0);
                 ApplyMoveSpeed(zz, moveSpeed);
             }
 
@@ -670,13 +672,13 @@ namespace FusionCoop.Coop
 
         // Damage the puppet by what the host's zombie lost, through the game's own TakeDamage so armor
         // cracks, falls and lost heads happen like on the host; then copy the exact values.
-        private static void ApplyHealth(Zombie z, int health, int armor1, int armor2)
+        private static void ApplyHealth(Zombie z, long health, int armor1, int armor2)
         {
-            int local = z.theHealth + z.theFirstArmorHealth + z.theSecondArmorHealth;
-            int host = health + armor1 + armor2;
+            long local = z.theHealth + z.theFirstArmorHealth + z.theSecondArmorHealth;
+            long host = health + armor1 + armor2;
             if (host < local)
             {
-                int dmg = local - host;
+                int dmg = (int)System.Math.Min(local - host, int.MaxValue);
                 Replay(() => z.TakeDamage(dmg, null, DamageType.Normal, (PlantType)(-1), false));
             }
             if (z == null) return;
@@ -727,11 +729,16 @@ namespace FusionCoop.Coop
             if (z.anim != null) z.anim.SetFloat("Speed", speed);
         }
 
-        private static void ApplyAnim(Zombie z, int hash, float time, float speed)
+        // Eating is an attack state on layer 0 that the animator leaves again unless its isAttacking
+        // parameter is on; puppets don't run AttackUpdate (which sets it), so the host's value is set here.
+        private static readonly int IsAttackingParam = Animator.StringToHash("isAttacking");
+
+        private static void ApplyAnim(Zombie z, int hash, float time, float speed, bool attacking)
         {
             var anim = z.anim;
             if (anim == null) return;
             if (anim.speed != speed) anim.speed = speed;
+            if (z.hasIsAttackingParam && anim.GetBool(IsAttackingParam) != attacking) anim.SetBool(IsAttackingParam, attacking);
             if (hash == 0) return;
             if (anim.GetCurrentAnimatorStateInfo(0).fullPathHash == hash) return;
             if (!anim.HasState(0, hash)) return;

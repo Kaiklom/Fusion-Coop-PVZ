@@ -237,6 +237,42 @@ namespace FusionCoop.Coop
             return found;
         }
 
+        // ---------- bites ----------
+        // Each bite's plant flash and chomp sound come from Zombie.AttackEffect, which AttackUpdate calls;
+        // puppets don't run AttackUpdate, so the host sends every bite and the puppet plays it.
+        [HarmonyPatch(typeof(Zombie), "AttackEffect")]
+        internal static class AttackEffectPatch
+        {
+            private static void Postfix(Zombie __instance, Plant plant)
+            {
+                if (Session.Role != Role.Host || !Session.Ready || __instance == null || plant == null) return;
+                if (!HostIds.TryGetValue(__instance.GetInstanceID(), out uint id)) return;
+                int col = plant.thePlantColumn, row = plant.thePlantRow;
+                var type = plant.thePlantType;
+                Session.SendToClients(Protocol.Build(Msg.ZombieBite, w =>
+                {
+                    w.Write(id);
+                    w.Write((sbyte)col);
+                    w.Write((sbyte)row);
+                    w.Write((int)type);
+                }));
+            }
+        }
+
+        private static void ReplayBite(Packet pkt)
+        {
+            var r = pkt.Reader();
+            uint id = r.ReadUInt32();
+            int col = r.ReadSByte(), row = r.ReadSByte();
+            var type = (PlantType)r.ReadInt32();
+            if (!ClientZombies.TryGetValue(id, out var rz) || rz.Zombie == null || rz.Killed) return;
+            var plant = PlantSync.FindPlant(col, row, type);
+            if (plant == null || plant.thePlantType != type) return;
+            var z = rz.Zombie;
+            try { Replay(() => z.AttackEffect(plant)); }
+            catch (System.Exception e) { FusionCoopMod.Log.Warning($"[zombie] bite replay failed: {e.Message}"); }
+        }
+
         private static bool HandleExtraMessage(Packet pkt)
         {
             switch (pkt.Type)
@@ -246,6 +282,9 @@ namespace FusionCoop.Coop
                     return true;
                 case Msg.ZombieCharred:
                     ReplayCharred(pkt);
+                    return true;
+                case Msg.ZombieBite:
+                    ReplayBite(pkt);
                     return true;
                 default:
                     return false;

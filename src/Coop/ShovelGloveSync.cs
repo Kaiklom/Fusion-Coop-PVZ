@@ -193,6 +193,9 @@ namespace FusionCoop.Coop
             int toCol = r.ReadSByte(), toRow = r.ReadSByte();
             var placeType = (PlantType)r.ReadInt32();
             var moved = PlantSync.Replay(toCol, toRow, placeType, plant);
+            // Plants that only come from upgrades (tall-nut from fertilizer, ...) can't be set by a plain
+            // SetPlant; the game lets the held plant through. The move was accepted, so place it freely.
+            if (moved == null && plant != null) moved = PlantSync.Replay(toCol, toRow, placeType, plant, true);
             if (moved == null)
             {
                 FusionCoopMod.Log.Warning($"[glove] replay {who} {type} c{col} r{row} -> c{toCol} r{toRow} FAILED");

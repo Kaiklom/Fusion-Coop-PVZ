@@ -52,8 +52,8 @@ namespace FusionCoop.Net
         RejoinLevel = 48,
         // host -> clients, 10 Hz: int wave, int maxWave, float timeUntilNextWave, bool isHugeWave,
         // float hugeWaveCountDown, ushort count, then
-        // count x (uint id, int type, sbyte row, float x, float y, int health, int armor1, int armor2,
-        // int animatorStateHash, float animatorTime, byte flags[1 dying, 2 mind controlled],
+        // count x (uint id, int type, sbyte row, float x, float y, long health, int armor1, int armor2,
+        // int animatorStateHash, float animatorTime, byte flags[1 dying, 2 mind controlled, 4 attacking],
         // byte effects[1 cold, 2 freeze, 4 butter], float animatorSpeed, float moveSpeed)
         ZombieState = 49,
         // host -> clients: uint zombie id, int reason (Zombie.Die ran on the host)
@@ -99,11 +99,17 @@ namespace FusionCoop.Net
         PrizeClicked = 65,
         // host -> clients: (empty) the host leaves the trophy screen (PrizeMgr.GoBack)
         PrizeGoBack = 66,
+        // either way: (sbyte col, sbyte row, int plantType) a player used a fertilizer on that plant;
+        // the host replays a client's use and passes it on to the other clients
+        FertilizeUsed = 67,
+        // host -> clients: (uint zombieId, sbyte col, sbyte row, int plantType) a zombie bit that plant
+        // (Zombie.AttackEffect: flash and chomp sound)
+        ZombieBite = 68,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 22;
+        internal const int Version = 26;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

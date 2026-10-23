@@ -10,8 +10,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
-    <!-- Game version to build against: ..\games\<version> (dotnet build -p:GameVersion=4.0.5) -->
-    <GameVersion Condition="'$(GameVersion)' == ''">3.8.1</GameVersion>
+    <!-- Game version to build against: ..\games\<version> (4.0.5 only; the 3.8.1 build is git tag 3.8.1-final) -->
+    <GameVersion Condition="'$(GameVersion)' == ''">4.0.5</GameVersion>
     <GameDir>$(MSBuildProjectDirectory)\..\games\$(GameVersion)</GameDir>
     <MLDir>$(GameDir)\MelonLoader</MLDir>
     <!-- Second install for two-window testing on one PC -->

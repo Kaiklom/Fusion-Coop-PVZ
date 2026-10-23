@@ -369,14 +369,15 @@ namespace FusionCoop.Coop
             });
 
         // Same call the game makes: plain planting, or a glove move when target is the plant being moved.
-        internal static Plant Replay(int col, int row, PlantType type, Plant target = null)
+        // free = isFreeSet, which skips the game's own checks (for moves the host already accepted).
+        internal static Plant Replay(int col, int row, PlantType type, Plant target = null, bool free = false)
         {
             var cp = CreatePlant.Instance;
             if (cp == null || Board.Instance == null) return null;
             Replaying = true;
             try
             {
-                return cp.SetPlant(col, row, type, target, default, false, true, null);
+                return cp.SetPlant(col, row, type, target, default, free, true, null);
             }
             finally
             {

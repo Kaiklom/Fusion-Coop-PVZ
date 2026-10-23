@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.9.0", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.10.0", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -49,6 +49,7 @@ namespace FusionCoop
             Coop.MowerSync.Init();
             Coop.GraveSync.Init();
             Coop.PrizeSync.Init();
+            Coop.FertilizeSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -86,6 +87,7 @@ namespace FusionCoop
                 typeof(Coop.ZombieSync.SetLadderPatch),
                 typeof(Coop.ZombieSync.SetWeaponPatch),
                 typeof(Coop.ZombieSync.CharredPatch),
+                typeof(Coop.ZombieSync.AttackEffectPatch),
                 typeof(Coop.ZombieSync.JacksonSummonPatch),
                 typeof(Coop.ZombieSync.JacksonAnimSummonPatch),
                 typeof(Coop.PlantSync.ClientPlantDamagePatch),
@@ -104,6 +106,9 @@ namespace FusionCoop
                 typeof(Coop.PrizeSync.ClickPatch),
                 typeof(Coop.PrizeSync.ClickedPatch),
                 typeof(Coop.PrizeSync.GoBackPatch),
+                typeof(Coop.FertilizeSync.EndoFirePatch),
+                typeof(Coop.FertilizeSync.UsePatch),
+                typeof(Coop.FertilizeSync.UpgradePatch),
             });
             if (_probes.Value) PatchProbes();
         }
