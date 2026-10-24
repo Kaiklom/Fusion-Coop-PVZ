@@ -279,6 +279,19 @@ namespace FusionCoop.Coop
             private static bool Prefix() => PresentOpensLocally();
         }
 
+        // Some fusions unlock by winning a Challenge level (CreatePlant.Lim, read by MixFail). A fusion
+        // another player made is replayed even if this machine's save hasn't unlocked it, so the boards match.
+        [HarmonyPatch(typeof(CreatePlant), "Lim")]
+        internal static class MixLimitPatch
+        {
+            private static bool Prefix(ref bool __result)
+            {
+                if (!Replaying || !Session.Ready) return true;
+                __result = false;
+                return false;
+            }
+        }
+
         // ---------- plant health ----------
 
         private static double _nextHealthSend;

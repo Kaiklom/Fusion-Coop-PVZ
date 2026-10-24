@@ -93,8 +93,9 @@ namespace FusionCoop.Net
         GraveDied = 62,
         // host -> clients: sbyte col, sbyte row, int graveType, int zombieType (a zombie rises from that grave)
         GraveSummon = 63,
-        // host -> clients: (empty) the host's board won (BoardVictory.Win): drop the trophy
-        LevelWon = 64,
+        // host -> clients: (float x, float y, bool killZombie, bool fake) the host's game dropped a trophy
+        // (Lawnf.SetAward: normal wins, mini-game wins, fake trophies)
+        AwardDropped = 64,
         // host -> clients: (empty) the host collected the trophy (PrizeMgr.Clicked)
         PrizeClicked = 65,
         // host -> clients: (empty) the host leaves the trophy screen (PrizeMgr.GoBack)
@@ -109,7 +110,7 @@ namespace FusionCoop.Net
 
     internal static class Protocol
     {
-        internal const int Version = 26;
+        internal const int Version = 27;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

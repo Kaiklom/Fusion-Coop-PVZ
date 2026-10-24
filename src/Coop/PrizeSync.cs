@@ -8,17 +8,19 @@ namespace FusionCoop.Coop
 {
     // Winning a level is decided by the host.
     //
-    // The board's victory check (BoardVictory.Win) drops the trophy (Lawnf.SetAward -> PrizeMgr); clicking
-    // it (PrizeMgr.Clicked) records the level as completed in the save, unlocks what it unlocks, plays the
-    // light-out, and then PrizeMgr.GoBack leaves for the next level or menu. Clients:
-    // - don't win on their own; the host's win drops the trophy everywhere,
+    // Every trophy comes from Lawnf.SetAward: the board's victory check (BoardVictory.OnUpdate calls it
+    // directly, BoardVictory.Win too), and mini-games that win their own way (Bejeweled, 2048, bricks, ...).
+    // Clicking it (PrizeMgr.Clicked) records the level as completed in the save (unlocks such as Challenge
+    // fusions are read from those flags), plays the light-out, and then PrizeMgr.GoBack leaves for the
+    // next level or menu. Clients:
+    // - don't run the victory check and don't drop trophies themselves; each trophy the host's game drops
+    //   is dropped at the same spot everywhere, and a real one also ends the client's board,
     // - can't click the trophy; the host's click is replayed, so every player's own save records the
     //   level (a level the client already had gives nothing new, as in the game),
     // - leave the trophy screen when the host does; the host's next level then arrives through LevelSync.
     internal static class PrizeSync
     {
         private static bool _replaying;
-        private static int _wonBoard; // host: board instance that already sent its win
         internal static bool GoingBack; // client: replaying the host's GoBack
 
         internal static void Init()
@@ -34,14 +36,36 @@ namespace FusionCoop.Coop
         internal static class WinPatch
         {
             private static bool Prefix() => !ClientBlocks;
+        }
 
-            private static void Postfix()
+        // The check itself also ends the board (Board.over) before it drops the trophy.
+        [HarmonyPatch(typeof(BoardVictory), nameof(BoardVictory.OnUpdate))]
+        internal static class VictoryUpdatePatch
+        {
+            private static bool Prefix() => !IsClient;
+        }
+
+        [HarmonyPatch(typeof(Lawnf), nameof(Lawnf.SetAward))]
+        internal static class SetAwardPatch
+        {
+            private static bool Prefix(ref PrizeMgr __result)
             {
-                var board = Board.Instance;
-                if (!IsHost || board == null || board.GetInstanceID() == _wonBoard) return;
-                _wonBoard = board.GetInstanceID();
-                Session.SendToClients(Protocol.Build(Msg.LevelWon));
-                FusionCoopMod.Log.Msg("[prize] host won -> clients");
+                if (!ClientBlocks) return true;
+                __result = null;
+                return false;
+            }
+
+            private static void Postfix(Board board, Vector2 position, bool killZombie, bool fake)
+            {
+                if (!IsHost || board == null) return;
+                Session.SendToClients(Protocol.Build(Msg.AwardDropped, w =>
+                {
+                    w.Write(position.x);
+                    w.Write(position.y);
+                    w.Write(killZombie);
+                    w.Write(fake);
+                }));
+                FusionCoopMod.Log.Msg($"[prize] host dropped a {(fake ? "fake " : "")}trophy -> clients");
             }
         }
 
@@ -112,15 +136,26 @@ namespace FusionCoop.Coop
         {
             switch (pkt.Type)
             {
-                case Msg.LevelWon:
+                case Msg.AwardDropped:
                 {
-                    var victory = Board.Instance != null ? Board.Instance.boardVicotry : null;
-                    if (victory == null)
+                    var r = pkt.Reader();
+                    var position = new Vector2(r.ReadSingle(), r.ReadSingle());
+                    bool killZombie = r.ReadBoolean(), fake = r.ReadBoolean();
+                    var board = Board.Instance;
+                    if (board == null)
                     {
-                        FusionCoopMod.Log.Warning("[prize] host won but this window has no board");
+                        FusionCoopMod.Log.Warning("[prize] host dropped a trophy but this window has no board");
                         return;
                     }
-                    Run("win", victory.Win);
+                    Run("trophy", () =>
+                    {
+                        Lawnf.SetAward(board, position, killZombie, fake);
+                        // a real trophy ends the board, as the host's victory check did (BoardVictory.Win)
+                        if (fake || board.over) return;
+                        board.over = true;
+                        if (board.boardStatistics != null) board.boardStatistics.GameOver(GameResult.Victory);
+                    });
+                    FusionCoopMod.Log.Msg($"[prize] host dropped a {(fake ? "fake " : "")}trophy here");
                     break;
                 }
                 case Msg.PrizeClicked:
