@@ -25,6 +25,8 @@ namespace FusionCoop.Coop
             (ZombieType.CatapultZombie, "Catapult"),
             (ZombieType.LadderZombie, "Ladder"),
             (ZombieType.MachineNutZombie, "Machine Nut"),
+            (ZombieType.TallNutFootballZombie, "Tall-nut Football (drops a helmet)"),
+            (ZombieType.BucketNutZombie, "Bucket Nut (drops a bucket)"),
             (ZombieType.WallNutZombie, "Wall-nut Zombie"),
             (ZombieType.BucketZombie, "Buckethead"),
             (ZombieType.DoorZombie, "Screen Door"),
