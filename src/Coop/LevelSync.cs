@@ -201,6 +201,7 @@ namespace FusionCoop.Coop
         // (On a normal synchronised start the host has none yet, so this costs nothing.)
         internal static void Update()
         {
+            RemoveStaleBoards();
             if (IsClient && _previewSweepAt > 0 && Session.Now >= _previewSweepAt)
             {
                 _previewSweepAt = 0;
@@ -262,11 +263,39 @@ namespace FusionCoop.Coop
             return s + (IsHost ? "  [F12] force start" : "");
         }
 
+        // Every board carries its own Mouse, and every Mouse reacts to each click: a board left over from an
+        // earlier level (seen on clients after winning levels in a row) picks up the clicked card too and plants
+        // it again, one extra plant per leftover board. Only the current board may live.
+        private static double _nextBoardCheck;
+
+        private static void RemoveStaleBoards()
+        {
+            if (Session.Now < _nextBoardCheck) return;
+            _nextBoardCheck = Session.Now + 1;
+            var current = Board.Instance;
+            if (current == null) return;
+            var mice = UnityEngine.Object.FindObjectsOfType<Mouse>();
+            if (mice.Length <= 1) return;
+            foreach (var m in mice)
+            {
+                if (m == null || m == Mouse.Instance) continue;
+                var b = m.GetComponent<Board>();
+                string where = b == null ? "no board" : b == current ? "the current board" : "an old board";
+                FusionCoopMod.Log.Warning($"[level] extra Mouse on {where} ({m.gameObject.name}, {mice.Length} in all): removed");
+                if (b != null && b != current) UnityEngine.Object.Destroy(b.gameObject);
+                else UnityEngine.Object.Destroy(m);
+            }
+        }
+
         // Same teardown as PauseMenu_Btn.Restart before leaving a board.
         private static void TearDownBoard()
         {
             var board = Board.Instance;
-            if (board == null) return;
+            if (board == null)
+            {
+                FusionCoopMod.Log.Msg($"[level] teardown: no current board ({UnityEngine.Object.FindObjectsOfType<Board>().Length} board objects left)");
+                return;
+            }
             try
             {
                 board.ClearTheBoard();
