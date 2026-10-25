@@ -38,11 +38,56 @@ namespace FusionCoop.Coop
             private static bool Prefix() => !ClientBlocks;
         }
 
-        // The check itself also ends the board (Board.over) before it drops the trophy.
+        // The victory check (BoardVictory.OnUpdate) ends the board (Board.over) and runs the board's victory
+        // action: the trophy, or in Survival / Odyssey the next round (Board.EnterNextRound, the buff menu,
+        // StartNextRound). Clients don't check by themselves: when the host's check passes it sends
+        // VictoryFired and clients run the same OnUpdate with the check forced to pass, so they take the
+        // same path (a trophy dropped in there is not sent separately).
+        private static bool _forceVictory; // client: replaying the host's passed check
+        private static bool _hostInVictory;
+
         [HarmonyPatch(typeof(BoardVictory), nameof(BoardVictory.OnUpdate))]
         internal static class VictoryUpdatePatch
         {
-            private static bool Prefix() => !IsClient;
+            private static bool Prefix(Board board, out bool __state)
+            {
+                __state = board != null && board.over;
+                if (IsClient) return _forceVictory;
+                _hostInVictory = true;
+                return true;
+            }
+
+            private static void Postfix(Board board, bool __state)
+            {
+                if (!IsHost || board == null || __state || !board.over) return;
+                Session.SendToClients(Protocol.Build(Msg.VictoryFired));
+                FusionCoopMod.Log.Msg($"[prize] host's victory check passed (round {board.theCurrentSurvivalRound}/{board.theSurvivalMaxRound}) -> clients");
+            }
+
+            private static System.Exception Finalizer(System.Exception __exception)
+            {
+                _hostInVictory = false;
+                return __exception;
+            }
+        }
+
+        [HarmonyPatch]
+        internal static class VictoryCheckPatch
+        {
+            // BoardVictory.Check itself is an empty body shared by ~400 methods: only the real ones.
+            private static System.Collections.Generic.IEnumerable<System.Reflection.MethodBase> TargetMethods() => new System.Reflection.MethodBase[]
+            {
+                AccessTools.Method(typeof(DefaultVictory), "Check"),
+                AccessTools.Method(typeof(CustomVictory), "Check"),
+                AccessTools.Method(typeof(IZVictory), "Check"),
+            };
+
+            private static bool Prefix(ref bool __result)
+            {
+                if (!_forceVictory) return true;
+                __result = true;
+                return false;
+            }
         }
 
         [HarmonyPatch(typeof(Lawnf), nameof(Lawnf.SetAward))]
@@ -57,7 +102,7 @@ namespace FusionCoop.Coop
 
             private static void Postfix(Board board, Vector2 position, bool killZombie, bool fake)
             {
-                if (!IsHost || board == null) return;
+                if (!IsHost || board == null || _hostInVictory) return; // clients drop it in their own OnUpdate
                 Session.SendToClients(Protocol.Build(Msg.AwardDropped, w =>
                 {
                     w.Write(position.x);
@@ -136,6 +181,27 @@ namespace FusionCoop.Coop
         {
             switch (pkt.Type)
             {
+                case Msg.VictoryFired:
+                {
+                    var board = Board.Instance;
+                    var victory = board != null ? board.boardVicotry : null;
+                    if (victory == null)
+                    {
+                        FusionCoopMod.Log.Warning("[prize] host's victory check passed but this window has no board");
+                        return;
+                    }
+                    _forceVictory = true;
+                    try
+                    {
+                        Run("victory", () => victory.OnUpdate(board));
+                    }
+                    finally
+                    {
+                        _forceVictory = false;
+                    }
+                    FusionCoopMod.Log.Msg($"[prize] host's victory check passed here (round {board.theCurrentSurvivalRound}/{board.theSurvivalMaxRound})");
+                    break;
+                }
                 case Msg.AwardDropped:
                 {
                     var r = pkt.Reader();

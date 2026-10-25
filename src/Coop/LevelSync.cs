@@ -151,6 +151,41 @@ namespace FusionCoop.Coop
                 }
             });
             if (IsHost) AnnounceStartIfReady();
+            else _previewSweepAt = Session.Now + 3;
+        }
+
+        // Client: the zombies shown while choosing cards (InitBoard.InitZombieFromList ->
+        // boardEntity.zombiePreviews) could stay on the lawn after the host's start (seen after a restart).
+        // Every one made is remembered and whatever is left a few seconds into the battle is removed.
+        private static readonly List<UnityEngine.GameObject> Previews = new();
+        private static double _previewSweepAt;
+
+        [HarmonyPatch(typeof(InitBoard), "InitZombieFromList")]
+        internal static class PreviewZombiesPatch
+        {
+            private static void Postfix(InitBoard __instance)
+            {
+                var list = __instance != null && __instance.board != null && __instance.board.boardEntity != null
+                    ? __instance.board.boardEntity.zombiePreviews : null;
+                if (list == null) return;
+                foreach (var go in list)
+                    if (go != null) Previews.Add(go);
+            }
+        }
+
+        private static void SweepPreviews()
+        {
+            int n = 0;
+            foreach (var go in Previews)
+                if (go != null)
+                {
+                    UnityEngine.Object.Destroy(go);
+                    n++;
+                }
+            Previews.Clear();
+            var list = Board.Instance != null && Board.Instance.boardEntity != null ? Board.Instance.boardEntity.zombiePreviews : null;
+            if (list != null) list.Clear();
+            if (n > 0) FusionCoopMod.Log.Msg($"[level] removed {n} card-choice zombies left on the lawn");
         }
 
         private static void AnnounceStartIfReady()
@@ -159,12 +194,18 @@ namespace FusionCoop.Coop
             _battleStarted = true;
             Session.SendToClients(Protocol.Build(Msg.BattleStart));
             FusionCoopMod.Log.Msg("[level] battle started -> clients");
+            TravelSync.SendSnapshot();
         }
 
         // Client, every frame: once our battle runs, ask the host for the plants already placed.
         // (On a normal synchronised start the host has none yet, so this costs nothing.)
         internal static void Update()
         {
+            if (IsClient && _previewSweepAt > 0 && Session.Now >= _previewSweepAt)
+            {
+                _previewSweepAt = 0;
+                SweepPreviews();
+            }
             if (!IsClient || !_clientOnLevel || !_hostStarted || _snapshotAsked) return;
             if (InitBoard.Instance == null || !InitBoard.Instance.ready || Board.Instance == null) return;
             _snapshotAsked = true;
@@ -223,6 +264,49 @@ namespace FusionCoop.Coop
             {
                 FusionCoopMod.Log.Error($"[level] board teardown failed: {e.Message}");
             }
+        }
+
+        // ---------- Odyssey rounds ----------
+        // Between Odyssey rounds Board.TravelNextRound builds a new board by itself (no UIMgr.EnterGame) and
+        // opens the card chooser again: every window waits for everyone's start button again, as on entry.
+        internal static void NewRound()
+        {
+            if (IsHost && _onLevel)
+            {
+                _battleStarted = false;
+                _startBtn = null;
+                ReadyPlayers.Clear();
+                InLevel.Clear();
+                foreach (var pid in Session.Names.Keys) InLevel.Add(pid);
+                Session.SendToClients(BuildReady());
+                FusionCoopMod.Log.Msg("[level] new round: choosing cards again");
+            }
+            else if (IsClient && _clientOnLevel)
+            {
+                _hostStarted = false;
+                _clientReady = false;
+                _snapshotAsked = false; // plants come from each window's own save: take the host's after the start
+                _readyMask = 0;
+                _startBtn = null;
+                FusionCoopMod.Log.Msg("[level] new round: choosing cards again");
+            }
+        }
+
+        [HarmonyPatch]
+        internal static class TravelRoundPatch
+        {
+            // Board.<>c.<TravelNextRound>b__175_0: the delayed action that builds the next round's board.
+            private static MethodBase TargetMethod()
+            {
+                foreach (var t in typeof(Board).GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    var m = t.GetMethod("_TravelNextRound_b__175_0", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                    if (m != null) return m;
+                }
+                return null;
+            }
+
+            private static void Postfix() => NewRound();
         }
 
         // ---------- patches ----------
@@ -284,9 +368,9 @@ namespace FusionCoop.Coop
                 return true;
             }
 
-            private static void Postfix(LevelType levelType, int levelNumber, int id, string name)
+            private static void Postfix(LevelType levelType, int levelNumber, int id, string name, bool __runOriginal)
             {
-                if (!IsHost) return;
+                if (!IsHost || !__runOriginal) return; // not entered (single player only, ...)
                 _current = new LevelArgs { Type = levelType, Number = levelNumber, Id = id, Name = name };
                 _onLevel = true;
                 _battleStarted = false;

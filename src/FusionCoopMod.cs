@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.11.3", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.12.0", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -57,6 +57,8 @@ namespace FusionCoop
             Coop.PrizeSync.Init();
             Coop.FertilizeSync.Init();
             Coop.ItemUseSync.Init();
+            Coop.TravelSync.Init();
+            Coop.MultiChoiceSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -68,6 +70,9 @@ namespace FusionCoop
                 typeof(Coop.SpeedSync.BackToGamePatch),
                 typeof(Coop.LevelSync.EnterGamePatch),
                 typeof(Coop.LevelSync.EnterIZGamePatch),
+                typeof(Coop.LevelSync.TravelRoundPatch),
+                typeof(Coop.LevelSync.PreviewZombiesPatch),
+                typeof(Coop.TravelSync.SceneSeedPatch),
                 typeof(Coop.LevelSync.StartButtonPatch),
                 typeof(Coop.LevelSync.RestartPatch),
                 typeof(Coop.LevelSync.EnterLoseMenuPatch),
@@ -117,6 +122,7 @@ namespace FusionCoop
                 typeof(Coop.GraveSync.PreviewPatch),
                 typeof(Coop.PrizeSync.WinPatch),
                 typeof(Coop.PrizeSync.VictoryUpdatePatch),
+                typeof(Coop.PrizeSync.VictoryCheckPatch),
                 typeof(Coop.PrizeSync.SetAwardPatch),
                 typeof(Coop.PrizeSync.ClickPatch),
                 typeof(Coop.PrizeSync.ClickedPatch),
@@ -127,6 +133,36 @@ namespace FusionCoop
                 typeof(Coop.ItemUseSync.BucketUsePatch),
                 typeof(Coop.ItemUseSync.HelmetUsePatch),
                 typeof(Coop.ItemUseSync.BeanPatch),
+                typeof(Coop.TravelSync.BuffSelectPatch),
+                typeof(Coop.TravelSync.BuffGiveUpPatch),
+                typeof(Coop.TravelSync.StoreSelectPatch),
+                typeof(Coop.TravelSync.StoreRefreshPatch),
+                typeof(Coop.TravelSync.InvestSelectPatch),
+                typeof(Coop.TravelSync.InvestRefreshPatch),
+                typeof(Coop.TravelSync.RefreshButtonPatch),
+                typeof(Coop.TravelSync.GetNormalPatch),
+                typeof(Coop.TravelSync.GetUltiPatch),
+                typeof(Coop.TravelSync.GetDebuffPatch),
+                typeof(Coop.TravelSync.GetInvestPatch),
+                typeof(Coop.TravelSync.UnlockPatch),
+                typeof(Coop.TravelSync.BuffQuitPatch),
+                typeof(Coop.TravelSync.StoreExitPatch),
+                typeof(Coop.TravelSync.InvestQuitPatch),
+                typeof(Coop.TravelSync.BuffStartPatch),
+                typeof(Coop.TravelSync.StoreStartPatch),
+                typeof(Coop.TravelSync.InvestStartPatch),
+                typeof(Coop.TravelSync.StartNextRoundPatch),
+                typeof(Coop.TravelSync.JigsawInputPatch),
+                typeof(Coop.TravelSync.JigsawPlacedPatch),
+                typeof(Coop.TravelSync.TravelNextRoundPatch),
+                typeof(Coop.TravelSync.OptionsPatch),
+                typeof(Coop.MultiChoiceSync.WindowClickPatch),
+                typeof(Coop.MultiChoiceSync.SelectWindowPatch),
+                typeof(Coop.MultiChoiceSync.ConfirmPatch),
+                typeof(Coop.MultiChoiceSync.CancelPatch),
+                typeof(Coop.MultiChoiceSync.RefreshPatch),
+                typeof(Coop.MultiChoiceSync.StartPatch),
+                typeof(Coop.MultiChoiceSync.UpdateWindowPatch),
             });
             if (_probes.Value) PatchProbes();
         }

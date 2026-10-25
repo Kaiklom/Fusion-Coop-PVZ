@@ -114,11 +114,35 @@ namespace FusionCoop.Net
         ZombieGarlic = 70,
         // host -> clients: (sbyte col, sbyte row, int plantType) that plant flashes (Plant.FlashOnce outside a bite)
         PlantFlash = 71,
+        // host -> clients: (byte kind 0 normal / 1 ulti / 2 curse / 3 invest / 4 unlock, int id, bool upgrade)
+        // the host got that from an Odyssey menu (TravelMgr.Get*Buff / UnlockPlant)
+        TravelGrant = 72,
+        // host -> clients: (byte menu 0 buff / 1 store / 2 invest) the host closed that Odyssey menu
+        TravelMenuClosed = 73,
+        // host -> clients: the host's whole TravelData (TravelSync.SendSnapshot)
+        TravelData = 74,
+        // host -> clients: (empty) the host's victory check passed (BoardVictory.OnUpdate): run it here too
+        VictoryFired = 75,
+        // host -> clients: (sbyte col, sbyte row, int jigsawType) the host put an Odyssey jigsaw piece on that cell
+        JigsawPlaced = 76,
+        // host -> clients: (empty) the host went on to the next Odyssey round (Board.TravelNextRound)
+        TravelNextRound = 77,
+        // host -> clients: (byte n, n x (string il2cpp type name, int value)) the options in the host's buff menu
+        TravelOptions = 78,
+        // host -> clients: (bool first, byte n, n x short option index or -1) the options the host's
+        // MultipleChoiceMenu shows on its windows (first deal, or after a refresh)
+        MultiChoiceShown = 79,
+        // host -> clients: (short option index) the host picked that option in its MultipleChoiceMenu
+        MultiChoicePicked = 80,
+        // host -> clients: (empty) the host cancelled its MultipleChoiceMenu
+        MultiChoiceClosed = 81,
+        // host -> clients: (bool inBuffMenu, int left) the host pressed an Odyssey reroll button; that many are left
+        TravelRerolls = 82,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 29;
+        internal const int Version = 33;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
