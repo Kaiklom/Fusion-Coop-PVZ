@@ -67,6 +67,7 @@ namespace FusionCoop
                 typeof(Coop.ShovelGloveSync.TryToSetPlantByGlovePatch),
                 typeof(Coop.SpeedSync.BackToGamePatch),
                 typeof(Coop.LevelSync.EnterGamePatch),
+                typeof(Coop.LevelSync.EnterIZGamePatch),
                 typeof(Coop.LevelSync.StartButtonPatch),
                 typeof(Coop.LevelSync.RestartPatch),
                 typeof(Coop.LevelSync.EnterLoseMenuPatch),

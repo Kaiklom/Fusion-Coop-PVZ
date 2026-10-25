@@ -227,10 +227,52 @@ namespace FusionCoop.Coop
 
         // ---------- patches ----------
 
+        // Challenge levels one player plays by themselves (one board, cue, snake, character, PVP, level
+        // editor, ...): the host can't start them while someone else is in the room. List: local/challenge_study.md.
+        internal static readonly HashSet<int> SoloChallenges = new()
+        {
+            52, 53, 63,            // level editor, custom levels (files differ per PC), Zuma (its own scene)
+            100, 165,              // Bejeweled
+            116, 117, 118,         // nut billiards
+            122, 172,              // PVP
+            127,                   // snake
+            131,                   // Chinese chess
+            135,                   // 2048
+            139, 143,              // Fruit Ninja
+            145, 149,              // player shooting (one character)
+            156, 157, 158,         // brick breaker
+            163, 185, 189,         // playing the zombie side (IZ AI, I'm the zombie boss, Super IZ)
+            166,                   // bubble shooter
+            178,                   // minesweeper
+            187,                   // rhythm game
+            // not sure yet, single player for now (2026-10-25): zombie battle 2/3 (the player places zombies),
+            // zombie sorting, AutoChess, drawing plants, look at the stars / nut artist
+            133, 134, 186, 188, 197, 107, 161,
+        };
+
+        // Puzzle mode (I, Zombie: LevelType.IZ, UIMgr.EnterIZGame) is single player only too.
+        private static bool IsSolo(LevelType type, int number) =>
+            Session.Names.Count > 1 &&
+            (type == LevelType.IZ || (type == LevelType.Challenge && SoloChallenges.Contains(number)));
+
+        private static bool BlockSolo(string level)
+        {
+            Overlay.Toast("Single player mode only");
+            FusionCoopMod.Log.Msg($"[level] {level} is single player only: not entered");
+            return false;
+        }
+
+        [HarmonyPatch(typeof(UIMgr), nameof(UIMgr.EnterIZGame))]
+        internal static class EnterIZGamePatch
+        {
+            private static bool Prefix(int levelNumber) =>
+                !(IsHost && IsSolo(LevelType.IZ, levelNumber)) || BlockSolo($"IZ {levelNumber}");
+        }
+
         [HarmonyPatch(typeof(UIMgr), nameof(UIMgr.EnterGame))]
         internal static class EnterGamePatch
         {
-            private static bool Prefix()
+            private static bool Prefix(LevelType levelType, int levelNumber)
             {
                 if (IsClient && !_replaying)
                 {
@@ -238,6 +280,7 @@ namespace FusionCoop.Coop
                     if (!PrizeSync.GoingBack) Overlay.Toast("Only the host chooses the level");
                     return false;
                 }
+                if (IsHost && IsSolo(levelType, levelNumber)) return BlockSolo($"{levelType} {levelNumber}");
                 return true;
             }
 
