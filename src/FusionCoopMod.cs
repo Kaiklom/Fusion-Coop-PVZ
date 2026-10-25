@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.12.0", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.12.1", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -59,6 +59,7 @@ namespace FusionCoop
             Coop.ItemUseSync.Init();
             Coop.TravelSync.Init();
             Coop.MultiChoiceSync.Init();
+            Coop.MixBombSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -163,6 +164,8 @@ namespace FusionCoop
                 typeof(Coop.MultiChoiceSync.RefreshPatch),
                 typeof(Coop.MultiChoiceSync.StartPatch),
                 typeof(Coop.MultiChoiceSync.UpdateWindowPatch),
+                typeof(Coop.MixBombSync.AttributePatch),
+                typeof(Coop.MixBombSync.DropPatch),
             });
             if (_probes.Value) PatchProbes();
         }

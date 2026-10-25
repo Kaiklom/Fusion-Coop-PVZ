@@ -138,11 +138,15 @@ namespace FusionCoop.Net
         MultiChoiceClosed = 81,
         // host -> clients: (bool inBuffMenu, int left) the host pressed an Odyssey reroll button; that many are left
         TravelRerolls = 82,
+        // host -> one client: (float x, float y, int plantType) the Jicamagic that client placed dropped that card
+        MixCardDrop = 83,
+        // host -> clients: (byte placer) that player placed a zombie giftbox; everyone else gets its 100 sun too
+        GiftboxSun = 84,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 33;
+        internal const int Version = 35;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

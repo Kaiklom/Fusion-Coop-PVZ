@@ -53,6 +53,9 @@ namespace FusionCoop.Coop
             return p;
         }
 
+        // Host: the player whose placement is being replayed (255 outside that).
+        internal static byte Requester = 255;
+
         // Owner of a plant, or 255 when no player placed it (level setup, plant effects).
         internal static byte OwnerOf(Plant plant) =>
             plant != null && Owners.TryGetValue(plant.GetInstanceID(), out var o) ? o.Owner : (byte)255;
@@ -187,6 +190,7 @@ namespace FusionCoop.Coop
                     SetOwner(plant, 0);
                     Session.SendToClients(BuildDone(0, col, row, type));
                     FusionCoopMod.Log.Msg($"[plant] P1 {type} c{col} r{row} -> clients");
+                    ShareGiftSun(type, 0);
                 }
                 else
                 {
@@ -413,13 +417,35 @@ namespace FusionCoop.Coop
             int col = r.ReadSByte(), row = r.ReadSByte();
             var type = (PlantType)r.ReadInt32();
 
-            var plant = Replay(col, row, type);
+            Requester = from;
+            Plant plant;
+            try
+            {
+                plant = Replay(col, row, type);
+            }
+            finally
+            {
+                Requester = 255;
+            }
             bool ok = plant != null;
             Session.SendToPlayer(from, Protocol.Build(Msg.PlantResult, w => { w.Write(seq); w.Write(ok); }));
             FusionCoopMod.Log.Msg($"[plant] P{from + 1} #{seq} {type} c{col} r{row} -> {(ok ? "accepted" : "rejected")}");
             if (!ok) return;
             SetOwner(plant, from);
             Session.SendToClients(BuildDone(from, col, row, type), from);
+            ShareGiftSun(type, from);
+        }
+
+        // Zombie giftbox (PresentZombie): its card costs -100, so the player who places it gets 100 sun. The
+        // zombie it lets out comes for everyone, so everyone else gets the 100 too (user's choice).
+        private const int GiftSun = 100;
+
+        private static void ShareGiftSun(PlantType type, byte placer)
+        {
+            if (type != PlantType.PresentZombie) return;
+            Session.SendToClients(Protocol.Build(Msg.GiftboxSun, w => w.Write(placer)));
+            if (placer != Session.LocalId && Board.Instance != null) Board.Instance.GetSun(GiftSun, false);
+            FusionCoopMod.Log.Msg($"[plant] P{placer + 1} placed a zombie giftbox: +{GiftSun} sun for everyone else");
         }
 
         private static void OnClientMessage(Packet pkt)
@@ -427,6 +453,14 @@ namespace FusionCoop.Coop
             var r = pkt.Reader();
             switch (pkt.Type)
             {
+                case Msg.GiftboxSun:
+                {
+                    byte placer = r.ReadByte();
+                    if (placer == Session.LocalId || Board.Instance == null) break;
+                    Board.Instance.GetSun(GiftSun, false);
+                    FusionCoopMod.Log.Msg($"[plant] P{placer + 1} placed a zombie giftbox: +{GiftSun} sun");
+                    break;
+                }
                 case Msg.PlantResult:
                 {
                     uint seq = r.ReadUInt32();
