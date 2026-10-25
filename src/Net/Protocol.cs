@@ -14,6 +14,7 @@ namespace FusionCoop.Net
         Pong = 5,    // long ticks (echoed)
         Cursor = 6,  // byte playerId, CursorState
         Leave = 7,   // host -> clients: byte playerId
+        Roster = 8,  // host -> clients: byte n, n x (byte playerId, string name, short pingMs (-1 unknown))
 
         GameFirst = 32,
         // client -> host: uint seq, sbyte col, sbyte row, int plantType (card type held when planting)
@@ -146,7 +147,7 @@ namespace FusionCoop.Net
 
     internal static class Protocol
     {
-        internal const int Version = 35;
+        internal const int Version = 36;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

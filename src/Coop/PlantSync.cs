@@ -627,7 +627,7 @@ namespace FusionCoop.Coop
 
         private static readonly List<int> Dead = new();
 
-        internal static void DrawLabels(Camera cam, Color[] colors)
+        internal static void DrawLabels(Camera cam)
         {
             Dead.Clear();
             foreach (var kv in Owners)
@@ -640,10 +640,8 @@ namespace FusionCoop.Coop
                 }
                 var sp = cam.WorldToScreenPoint(p.transform.position);
                 float gx = sp.x, gy = Screen.height - sp.y;
-                var old = GUI.color;
-                GUI.color = colors[kv.Value.Owner % colors.Length];
-                GUI.Label(new Rect(gx - 12, gy - 6, 40, 22), $"P{kv.Value.Owner + 1}");
-                GUI.color = old;
+                byte o = kv.Value.Owner;
+                Overlay.Badge(gx - 15, gy + 4, $"P{o + 1}", Overlay.PlayerColors[o % Overlay.PlayerColors.Length]);
             }
             foreach (var id in Dead) Owners.Remove(id);
         }

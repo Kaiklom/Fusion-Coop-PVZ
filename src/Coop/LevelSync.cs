@@ -225,7 +225,7 @@ namespace FusionCoop.Coop
         // Client in the room but not in the host's level.
         internal static bool CanRejoin => IsClient && _hostLevelActive && !_clientOnLevel;
 
-        internal static string RejoinText() => CanRejoin ? "The host is playing a level - press [F10] to rejoin" : null;
+        internal static string RejoinText() => CanRejoin ? "The host is playing a level - Co-op > Rejoin level (or F10)" : null;
 
         internal static void RequestRejoin()
         {
@@ -235,6 +235,19 @@ namespace FusionCoop.Coop
         }
 
         // Status line for the overlay, null when not choosing cards.
+        // For the players window: is the card choice on, and where is each player in it.
+        internal static bool Choosing => IsHost ? _onLevel && !_battleStarted : IsClient && _clientOnLevel && !_hostStarted;
+
+        internal enum Phase { None, Choosing, Ready }
+
+        internal static Phase PhaseOf(byte id)
+        {
+            if (!Choosing) return Phase.None;
+            if (IsHost && !InLevel.Contains(id)) return Phase.None;
+            bool ready = IsHost ? ReadyPlayers.Contains(id) : (_readyMask & (1 << id)) != 0;
+            return ready ? Phase.Ready : Phase.Choosing;
+        }
+
         internal static string ReadyText()
         {
             bool choosing = IsHost ? _onLevel && !_battleStarted : IsClient && _clientOnLevel && !_hostStarted;

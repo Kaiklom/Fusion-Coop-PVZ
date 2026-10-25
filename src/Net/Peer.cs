@@ -18,6 +18,7 @@ namespace FusionCoop.Net
 
         internal byte PlayerId;
         internal string Name = "";
+        internal double RttMs = -1;
         internal bool Closed => _closed;
         internal string Remote { get; }
 

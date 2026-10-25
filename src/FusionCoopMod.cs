@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.12.2", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.13.0", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -14,6 +14,28 @@ namespace FusionCoop
     {
         internal static MelonLogger.Instance Log;
         internal static int Port => _port.Value;
+
+        internal static string PlayerName
+        {
+            get => _name.Value;
+            set
+            {
+                _name.Value = value;
+                MelonPreferences.Save();
+            }
+        }
+
+        internal static string LastIp => _lastIp.Value;
+
+        internal static void HostRoom() => Session.StartHost(_port.Value, _name.Value);
+
+        internal static void JoinRoom(string ip)
+        {
+            _lastIp.Value = ip;
+            MelonPreferences.Save();
+            Overlay.IpDraft = ip;
+            Session.Join(ip, _port.Value, _name.Value);
+        }
 
         private static MelonPreferences_Entry<string> _name;
         private static MelonPreferences_Entry<string> _lastIp;
@@ -44,6 +66,8 @@ namespace FusionCoop
             Coop.LevelSweep.Seconds = _sweepSeconds.Value;
             _testTools = cat.CreateEntry("TestTools", true, "Testing: F5/F6 pick a zombie, 9 (host) spawns it in the lane under the cursor, F4 +1000 sun");
             Coop.TestTools.Enabled = _testTools.Value;
+            UiDump.Enabled = cat.CreateEntry("UiDump", false, "Research: write the game's UI to UserData/ui_dump.txt once the main menu is up").Value;
+            Ui.CoopWindows.TestOpen = cat.CreateEntry("UiTest", false, "Testing: open the co-op windows by themselves for screenshots").Value;
             Overlay.IpDraft = _lastIp.Value;
 
             Coop.PlantSync.Init();
@@ -60,6 +84,7 @@ namespace FusionCoop
             Coop.TravelSync.Init();
             Coop.MultiChoiceSync.Init();
             Coop.MixBombSync.Init();
+            Ui.CoopWindows.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -214,6 +239,8 @@ namespace FusionCoop
             Session.Poll(ReadLocalCursor());
             if (_autoLevel.Value > 0) AutoLevelTest();
             Coop.LevelSweep.Update();
+            UiDump.Update();
+            Ui.CoopWindows.Update();
             Coop.SpeedSync.Update();
             Coop.LevelSync.Update();
             Coop.ZombieSync.Update();

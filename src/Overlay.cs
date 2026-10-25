@@ -3,11 +3,12 @@ using UnityEngine;
 
 namespace FusionCoop
 {
-    // IMGUI overlay. This build strips GUI.Button/TextField, so only Label/Box are used
-    // and all input goes through hotkeys (see FusionCoopMod.HandleKeys).
+    // IMGUI overlay: messages in the middle of the screen, the plant owner badges, and the F8 debug panel
+    // (hidden until F8). The player-facing windows are Ui.CoopWindows. This build strips GUI.Button/TextField,
+    // so only Label/Box/DrawTexture are used and the debug panel works through hotkeys.
     internal static class Overlay
     {
-        internal static bool PanelOpen = true;
+        internal static bool PanelOpen;
         internal static string IpDraft = "";
 
         private static string _toast;
@@ -80,8 +81,6 @@ namespace FusionCoop
                 Message(Screen.height * 0.3f, "PAUSED BY HOST - waiting for the host to resume");
             string rejoin = Coop.LevelSync.RejoinText();
             if (rejoin != null) Message(12, rejoin);
-            string ready = Coop.LevelSync.ReadyText();
-            if (ready != null) Message(12, ready);
             if (_toast != null && Session.Now < _toastUntil)
                 Message(Screen.height * 0.3f + 44, _toast);
         }
@@ -97,15 +96,11 @@ namespace FusionCoop
         internal static void Draw()
         {
             ApplyStyle();
-            DrawCursors();
+            var cam = Camera.main;
+            if (cam != null && Ui.CoopWindows.ShowOwners) Coop.PlantSync.DrawLabels(cam);
+            if (PanelOpen && cam != null) DrawCursors(cam);
             DrawCenterMessages();
-            if (!PanelOpen)
-            {
-                string mini = $"FusionCoop: {Session.Status}   [F8] panel";
-                Panel(new Rect(6, 6, 440, 30));
-                Text(new Rect(14, 11, 430, 24), mini, TextColor);
-                return;
-            }
+            if (!PanelOpen) return;
 
             string role = Session.Role switch
             {
@@ -126,7 +121,7 @@ namespace FusionCoop
                 Text(new Rect(x + 12, ty, w - 24, line + 4), t, c);
                 ty += line;
             }
-            Row("FusionCoop 0.12.2", HeadColor);
+            Row("FusionCoop 0.13.0", HeadColor);
             Row($"status: {Session.Status}", TextColor);
             Row($"role: {role}    ping: {rtt}", TextColor);
             Row($"players: {players}", TextColor);
@@ -137,11 +132,25 @@ namespace FusionCoop
                 Row($"test: [F5/F6] {Coop.TestTools.Selected}  [9] spawn  [F4] +sun", HeadColor);
         }
 
-        private static void DrawCursors()
+        // A small player tag: dark edge, the player's colour, white text.
+        private static Texture2D _white;
+
+        internal static void Badge(float x, float y, string text, Color color)
         {
-            var cam = Camera.main;
-            if (cam == null) return;
-            Coop.PlantSync.DrawLabels(cam, PlayerColors);
+            if (_white == null) _white = Texture2D.whiteTexture;
+            const float w = 30, h = 20;
+            var old = GUI.color;
+            GUI.color = new Color(0.1f, 0.07f, 0.03f, 0.9f);
+            GUI.DrawTexture(new Rect(x - 1, y - 1, w + 2, h + 2), _white);
+            GUI.color = new Color(color.r * 0.8f, color.g * 0.8f, color.b * 0.8f, 0.95f);
+            GUI.DrawTexture(new Rect(x, y, w, h), _white);
+            GUI.color = old;
+            Text(new Rect(x + 4, y - 1, w, h + 4), text, TextColor);
+        }
+
+        // Debug (F8): where the other players' mice are.
+        private static void DrawCursors(Camera cam)
+        {
             double now = Session.Now;
             foreach (var kv in Session.Cursors)
             {

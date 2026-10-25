@@ -26,6 +26,11 @@ namespace FusionCoop.Net
         internal static double RttMs { get; private set; } = -1;
         internal static readonly Dictionary<byte, RemoteCursor> Cursors = new();
         internal static readonly Dictionary<byte, string> Names = new();
+        // Round trip to the host per player (host: measured per client; clients: from the host's roster).
+        internal static readonly Dictionary<byte, double> Pings = new();
+        // Short messages for the player: someone joined / left, connected, rejected, kicked.
+        internal static Action<string> Notice;
+        private static double _nextRoster;
 
         private static readonly ConcurrentQueue<Packet> Inbox = new();
         private static readonly ConcurrentQueue<Peer> Accepted = new();
@@ -108,6 +113,7 @@ namespace FusionCoop.Net
             while (Accepted.TryDequeue(out var p)) p.Close();
             Cursors.Clear();
             Names.Clear();
+            Pings.Clear();
             Role = Role.None;
             RttMs = -1;
             Coop.PlantSync.Reset();
@@ -181,6 +187,22 @@ namespace FusionCoop.Net
                 if (Role == Role.Host) foreach (var p in Peers) { if (p.PlayerId != 0) p.Send(ping); }
                 else _host?.Send(ping);
             }
+            if (Role == Role.Host && now >= _nextRoster)
+            {
+                _nextRoster = now + 1.0;
+                Pings[0] = 0;
+                var roster = Protocol.Build(Msg.Roster, w =>
+                {
+                    w.Write((byte)Names.Count);
+                    foreach (var kv in Names)
+                    {
+                        w.Write(kv.Key);
+                        w.Write(kv.Value);
+                        w.Write((short)(Pings.TryGetValue(kv.Key, out var ms) ? Math.Min(ms, 9999) : -1));
+                    }
+                });
+                foreach (var p in Peers) if (p.PlayerId != 0) p.Send(roster);
+            }
             // Cursor: on change at most 20 Hz, plus a 1 s keepalive so late joiners see it.
             if (Ready && now >= _nextCursor && (!cursor.SameAs(_lastSentCursor) || now >= _nextCursorKeepalive))
             {
@@ -244,7 +266,9 @@ namespace FusionCoop.Net
                     string name = r.ReadString();
                     if (version != Protocol.Version)
                     {
-                        Reject(peer, $"version mismatch (host {Protocol.Version}, you {version})");
+                        Reject(peer, version < Protocol.Version
+                            ? $"your FusionCoop is older than the host's (protocol {version}, host {Protocol.Version}): update it"
+                            : $"the host's FusionCoop is older than yours (protocol {Protocol.Version}, you {version}): the host must update");
                         return;
                     }
                     byte id = 0;
@@ -262,6 +286,8 @@ namespace FusionCoop.Net
                     FusionCoopMod.Log.Msg($"P{id + 1} '{name}' joined from {peer.Remote}");
                     PlayerJoined?.Invoke(id);
                     Status = $"hosting, {Names.Count} players";
+                    Notice?.Invoke($"P{id + 1} {name} joined");
+                    _nextRoster = 0;
                     break;
                 }
                 case Msg.Ping:
@@ -271,7 +297,8 @@ namespace FusionCoop.Net
                     break;
                 }
                 case Msg.Pong:
-                    RttMs = TicksToMs(Clock.ElapsedTicks - r.ReadInt64());
+                    peer.RttMs = TicksToMs(Clock.ElapsedTicks - r.ReadInt64());
+                    if (peer.PlayerId != 0) Pings[peer.PlayerId] = peer.RttMs;
                     break;
                 case Msg.Cursor:
                 {
@@ -298,12 +325,37 @@ namespace FusionCoop.Net
                     LocalId = r.ReadByte();
                     Status = $"connected as P{LocalId + 1}";
                     FusionCoopMod.Log.Msg(Status);
+                    Notice?.Invoke("Connected to the room");
                     break;
                 case Msg.Reject:
                 {
                     string reason = r.ReadString();
                     Stop();
                     Status = $"rejected: {reason}";
+                    Notice?.Invoke(Status);
+                    break;
+                }
+                case Msg.Roster:
+                {
+                    var seen = new HashSet<byte>();
+                    bool first = Names.Count == 0;
+                    for (int n = r.ReadByte(); n > 0; n--)
+                    {
+                        byte id = r.ReadByte();
+                        string name = r.ReadString();
+                        short ping = r.ReadInt16();
+                        seen.Add(id);
+                        if (!first && !Names.ContainsKey(id) && id != LocalId) Notice?.Invoke($"P{id + 1} {name} joined");
+                        Names[id] = name;
+                        if (ping >= 0) Pings[id] = ping;
+                    }
+                    var gone = new List<byte>();
+                    foreach (var id in Names.Keys) if (!seen.Contains(id)) gone.Add(id);
+                    foreach (var id in gone)
+                    {
+                        Names.Remove(id);
+                        Pings.Remove(id);
+                    }
                     break;
                 }
                 case Msg.Ping:
@@ -326,13 +378,27 @@ namespace FusionCoop.Net
                 {
                     byte id = r.ReadByte();
                     Cursors.Remove(id);
+                    if (Names.TryGetValue(id, out var name)) Notice?.Invoke($"P{id + 1} {name} left");
                     Names.Remove(id);
+                    Pings.Remove(id);
                     break;
                 }
                 default:
                     if (pkt.Type >= Msg.GameFirst) ClientGameHandler?.Invoke(pkt);
                     break;
             }
+        }
+
+        // Host: drop that player with a reason they see.
+        internal static void Kick(byte id)
+        {
+            if (Role != Role.Host || id == 0) return;
+            foreach (var p in Peers)
+                if (p.PlayerId == id)
+                {
+                    FusionCoopMod.Log.Msg($"kicked P{id + 1}");
+                    Reject(p, "kicked by the host");
+                }
         }
 
         private static void Reject(Peer peer, string reason)
@@ -365,6 +431,7 @@ namespace FusionCoop.Net
                 {
                     Stop();
                     Status = "disconnected from host";
+                    Notice?.Invoke("Disconnected from the host");
                 }
                 return;
             }
@@ -375,12 +442,15 @@ namespace FusionCoop.Net
                 Peers.RemoveAt(i);
                 if (p.PlayerId == 0) continue;
                 byte id = p.PlayerId;
+                if (Names.TryGetValue(id, out var leftName)) Notice?.Invoke($"P{id + 1} {leftName} left");
                 Names.Remove(id);
+                Pings.Remove(id);
                 Cursors.Remove(id);
                 FusionCoopMod.Log.Msg($"P{id + 1} left");
                 Broadcast(Protocol.Build(Msg.Leave, w => w.Write(id)), null);
                 Status = $"hosting, {Names.Count} players";
                 PlayerLeft?.Invoke(id);
+                _nextRoster = 0;
             }
         }
 
