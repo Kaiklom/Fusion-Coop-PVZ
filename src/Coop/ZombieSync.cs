@@ -48,6 +48,7 @@ namespace FusionCoop.Coop
         private static float _hostUntil, _hostCountdown;
         private static bool _allowWaveStep;
         internal static bool Replaying;
+        private static bool _killing; // client: replaying the host's zombie death
 
         private static bool IsClient => Session.Role == Role.Client && Session.Ready;
 
@@ -88,7 +89,7 @@ namespace FusionCoop.Coop
         {
             private static bool Prefix(ref Zombie __result)
             {
-                if (IsClient && !Replaying)
+                if (IsClient && (!Replaying || _killing))
                 {
                     __result = null;
                     return false;
@@ -109,7 +110,7 @@ namespace FusionCoop.Coop
         {
             private static bool Prefix(ref Zombie __result)
             {
-                if (IsClient && !Replaying)
+                if (IsClient && (!Replaying || _killing))
                 {
                     __result = null;
                     return false;
@@ -590,6 +591,9 @@ namespace FusionCoop.Coop
 
                 var zz = rz.Zombie;
                 rz.Target = new Vector2(x, y);
+                // The host's zombie changed lanes (MachineNut bounce, garlic, ...): row-based things such as
+                // what it drops on death follow theZombieRow, not the position.
+                if (row >= 0 && zz.theZombieRow != row && !dying) Replay(() => zz.ChangeRow(row, true));
                 ApplyHealth(zz, health, armor1, armor2);
                 if (dying)
                 {
@@ -752,7 +756,17 @@ namespace FusionCoop.Coop
             var z = rz.Zombie;
             Puppets.Remove(z.GetInstanceID());
             if (z.theStatus == ZombieStatus.Dying) return; // already dying locally (magnet pull, fire)
-            Replay(() => CallDie(z, reason));
+            // Zombies a death lets out (a MachineNut's imps, ...) arrive from the host if its zombie let them out:
+            // it may have died in a way that doesn't (a mower), while Die here always would.
+            _killing = true;
+            try
+            {
+                Replay(() => CallDie(z, reason));
+            }
+            finally
+            {
+                _killing = false;
+            }
         }
 
         private static Zombie Spawn(CreateZombie cz, uint id, int row, ZombieType type, float x, bool mind)

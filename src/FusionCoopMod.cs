@@ -21,6 +21,8 @@ namespace FusionCoop
         private static MelonPreferences_Entry<bool> _probes;
         private static MelonPreferences_Entry<string> _autoStart;
         private static MelonPreferences_Entry<int> _autoLevel;
+        private static MelonPreferences_Entry<string> _sweep;
+        private static MelonPreferences_Entry<int> _sweepSeconds;
         private static MelonPreferences_Entry<bool> _testTools;
         private static double _autoLevelAt = -1, _autoForceAt = -1;
         private static bool _autoStarted;
@@ -36,6 +38,10 @@ namespace FusionCoop
             _probes = cat.CreateEntry("ProbeLog", true, "Log game calls (plant/sun/shovel) for research");
             _autoStart = cat.CreateEntry("AutoStart", "", "Testing: 'host' or 'join' starts the session automatically");
             _autoLevel = cat.CreateEntry("AutoLevel", 0, "Testing: host enters this Adventure level once a client joins and starts it; clients auto-ready (0 = off)");
+            _sweep = cat.CreateEntry("Sweep", "", "Testing: Challenge levels the host plays through, e.g. '1-20' (both windows log [sweep] lines; empty = off)");
+            _sweepSeconds = cat.CreateEntry("SweepSeconds", 45, "Testing: seconds per level in the sweep");
+            Coop.LevelSweep.Parse(_sweep.Value);
+            Coop.LevelSweep.Seconds = _sweepSeconds.Value;
             _testTools = cat.CreateEntry("TestTools", true, "Testing: F5/F6 pick a zombie, 9 (host) spawns it in the lane under the cursor, F4 +1000 sun");
             Coop.TestTools.Enabled = _testTools.Value;
             Overlay.IpDraft = _lastIp.Value;
@@ -87,6 +93,8 @@ namespace FusionCoop
                 typeof(Coop.ZombieSync.LadderStayPatch),
                 typeof(Coop.ZombieSync.SetLadderPatch),
                 typeof(Coop.ZombieSync.SetWeaponPatch),
+                typeof(Coop.ZombieSync.MachineNutTypePatch),
+                typeof(Coop.ZombieSync.MachineNutBouncePatch),
                 typeof(Coop.ZombieSync.CharredPatch),
                 typeof(Coop.ZombieSync.AttackEffectPatch),
                 typeof(Coop.ZombieSync.JacksonSummonPatch),
@@ -159,6 +167,7 @@ namespace FusionCoop
             HandleKeys();
             Session.Poll(ReadLocalCursor());
             if (_autoLevel.Value > 0) AutoLevelTest();
+            Coop.LevelSweep.Update();
             Coop.SpeedSync.Update();
             Coop.LevelSync.Update();
             Coop.ZombieSync.Update();

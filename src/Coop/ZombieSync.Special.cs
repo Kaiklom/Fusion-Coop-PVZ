@@ -44,6 +44,32 @@ namespace FusionCoop.Coop
             }
         }
 
+        // MachineNut picks plain / fire / ice in InitType (from Start) with Random.Range: seeded the same way.
+        [HarmonyPatch(typeof(MachineNutZombie), "InitType")]
+        internal static class MachineNutTypePatch
+        {
+            private static void Prefix(MachineNutZombie __instance, out Random.State __state)
+            {
+                __state = Random.state;
+                uint id = Session.Ready ? IdOf(__instance) : 0;
+                if (id != 0) Random.InitState(unchecked((int)(id * 2654435761u)));
+            }
+
+            private static System.Exception Finalizer(System.Exception __exception, Random.State __state)
+            {
+                Random.state = __state;
+                return __exception;
+            }
+        }
+
+        // A MachineNut bounces off a strong plant into another row; puppets don't bounce on their own,
+        // the host's row arrives with the zombie state (ChangeRow there).
+        [HarmonyPatch(typeof(MachineNutZombie), "OnTriggerStay2D")]
+        internal static class MachineNutBouncePatch
+        {
+            private static bool Prefix(MachineNutZombie __instance) => Replaying || !IsPuppet(__instance);
+        }
+
         // ---------- fire: ash deaths ----------
         // Fire plants call Zombie.Charred: heavy damage, and a zombie that dies from it turns to ash.
         // Clients' own fire on puppets is ignored; the host's burn is replayed, then its death.

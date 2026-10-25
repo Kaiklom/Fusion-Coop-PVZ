@@ -46,7 +46,14 @@ namespace FusionCoop.Coop
 
         internal static void HandleKeys()
         {
-            if (!Enabled || !InBattle) return;
+            if (!Enabled) return;
+            if (!InBattle)
+            {
+                bool pressed = Input.GetKeyDown(KeyCode.F4) || Input.GetKeyDown(KeyCode.F5) || Input.GetKeyDown(KeyCode.F6) ||
+                               Input.GetKeyDown(KeyCode.Alpha9) || Input.GetKeyDown(KeyCode.Keypad9);
+                if (pressed && Board.Instance != null) Overlay.Toast("Test keys work once the battle has started");
+                return;
+            }
             if (Input.GetKeyDown(KeyCode.F5)) Select(-1);
             if (Input.GetKeyDown(KeyCode.F6)) Select(+1);
             if (Input.GetKeyDown(KeyCode.Alpha9) || Input.GetKeyDown(KeyCode.Keypad9)) Spawn();
