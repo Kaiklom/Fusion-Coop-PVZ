@@ -63,11 +63,124 @@ namespace FusionCoop.Coop
         }
 
         // A MachineNut bounces off a strong plant into another row; puppets don't bounce on their own,
-        // the host's row arrives with the zombie state (ChangeRow there).
+        // the host's row arrives with the zombie state (ChangeRow there). The hit plant's flash is sent.
         [HarmonyPatch(typeof(MachineNutZombie), "OnTriggerStay2D")]
         internal static class MachineNutBouncePatch
         {
-            private static bool Prefix(MachineNutZombie __instance) => Replaying || !IsPuppet(__instance);
+            private static bool Prefix(MachineNutZombie __instance, out int __state)
+            {
+                __state = __instance != null ? __instance.theZombieRow : -1;
+                return Replaying || !IsPuppet(__instance);
+            }
+
+            private static void Postfix(MachineNutZombie __instance, Collider2D collision, int __state)
+            {
+                if (Session.Role != Role.Host || !Session.Ready || __instance == null || collision == null) return;
+                if (__instance.theZombieRow == __state) return; // no bounce this time
+                var plant = collision.GetComponent<Plant>();
+                if (plant != null) SendFlash(plant);
+            }
+        }
+
+        // ---------- garlic ----------
+        // Zombie.EatGarlic (the plant flashes, a sound, then DeLayGarliced: the stinky face and a lane
+        // change) comes from the zombie's own attack, which puppets don't run: the host sends it.
+        // A puppet doesn't change lanes on its own (Garliced picks a random free lane); the host's lane
+        // arrives with the zombie state.
+        // Only methods with a body of their own are patched: the zombies that ignore garlic (MachineNut,
+        // bosses, ...) declare an empty EatGarlic, and IL2CPP folds every empty method into one native
+        // function (~1300 of them), so patching one patches them all and crashes the game.
+        private static int _garlicDepth;
+
+        [HarmonyPatch(typeof(Zombie), nameof(Zombie.EatGarlic))]
+        internal static class EatGarlicPatch
+        {
+            private static bool Prefix(Zombie __instance, out float __state)
+            {
+                __state = __instance != null ? __instance.garlicSpeed : 0f;
+                _garlicDepth++;
+                return Replaying || !IsPuppet(__instance);
+            }
+
+            private static void Postfix(Zombie __instance, object[] __args, float __state)
+            {
+                if (_garlicDepth != 1 || Session.Role != Role.Host || !Session.Ready || __instance == null) return;
+                if (__state == 0f || __instance.garlicSpeed != 0f) return; // it didn't eat (already stinky, dying, ...)
+                if (!HostIds.TryGetValue(__instance.GetInstanceID(), out uint id)) return;
+                var plant = __args.Length > 0 ? __args[0] as Plant : null;
+                float time = __args.Length > 1 && __args[1] is float f ? f : 1f;
+                bool sound = __args.Length <= 2 || !(__args[2] is bool b) || b;
+                Session.SendToClients(Protocol.Build(Msg.ZombieGarlic, w =>
+                {
+                    w.Write(id);
+                    w.Write((sbyte)(plant != null ? plant.thePlantColumn : -1));
+                    w.Write((sbyte)(plant != null ? plant.thePlantRow : -1));
+                    w.Write(plant != null ? (int)plant.thePlantType : -1);
+                    w.Write(time);
+                    w.Write(sound);
+                }));
+            }
+
+            private static System.Exception Finalizer(System.Exception __exception)
+            {
+                _garlicDepth--;
+                return __exception;
+            }
+        }
+
+        [HarmonyPatch]
+        internal static class ChangeRowPatch
+        {
+            // Jackbox_a's ChangeRow is the same native function as PogoZombie's.
+            private static IEnumerable<MethodBase> TargetMethods() => new MethodBase[]
+            {
+                AccessTools.Method(typeof(Zombie), nameof(Zombie.ChangeRow)),
+                AccessTools.Method(typeof(PogoZombie), nameof(PogoZombie.ChangeRow)),
+                AccessTools.Method(typeof(LegionSniperZombie), nameof(LegionSniperZombie.ChangeRow)),
+            };
+
+            private static bool Prefix(Zombie __instance) => Replaying || !IsPuppet(__instance);
+        }
+
+        private static void ReplayGarlic(Packet pkt)
+        {
+            var r = pkt.Reader();
+            uint id = r.ReadUInt32();
+            int col = r.ReadSByte(), row = r.ReadSByte();
+            var type = (PlantType)r.ReadInt32();
+            float time = r.ReadSingle();
+            bool sound = r.ReadBoolean();
+            if (!ClientZombies.TryGetValue(id, out var rz) || rz.Zombie == null || rz.Killed) return;
+            Plant plant = null;
+            if (col >= 0)
+            {
+                plant = PlantSync.FindPlant(col, row, type);
+                if (plant != null && plant.thePlantType != type) plant = null;
+            }
+            var z = rz.Zombie;
+            try { Replay(() => CallDeclared(z, "EatGarlic", new[] { typeof(Plant), typeof(float), typeof(bool) }, new object[] { plant, time, sound })); }
+            catch (System.Exception e) { FusionCoopMod.Log.Warning($"[zombie] garlic replay failed: {e.Message}"); }
+        }
+
+        // ---------- plant flashes the game makes outside a bite ----------
+
+        private static void SendFlash(Plant plant)
+        {
+            Session.SendToClients(Protocol.Build(Msg.PlantFlash, w =>
+            {
+                w.Write((sbyte)plant.thePlantColumn);
+                w.Write((sbyte)plant.thePlantRow);
+                w.Write((int)plant.thePlantType);
+            }));
+        }
+
+        private static void ReplayFlash(Packet pkt)
+        {
+            var r = pkt.Reader();
+            int col = r.ReadSByte(), row = r.ReadSByte();
+            var type = (PlantType)r.ReadInt32();
+            var plant = PlantSync.FindPlant(col, row, type);
+            if (plant != null && plant.thePlantType == type) plant.FlashOnce();
         }
 
         // ---------- fire: ash deaths ----------
@@ -263,6 +376,31 @@ namespace FusionCoop.Coop
             return found;
         }
 
+        // Same for any other method a zombie class may redeclare (EatGarlic, ...).
+        private static readonly Dictionary<string, MethodInfo> DeclaredByClass = new();
+
+        private static void CallDeclared(Zombie z, string name, System.Type[] sig, object[] args)
+        {
+            var asm = typeof(Zombie).Assembly;
+            Il2CppSystem.Type t = z.GetIl2CppType();
+            string key = (t != null ? t.FullName : "?") + "::" + name;
+            if (!DeclaredByClass.TryGetValue(key, out var found))
+            {
+                for (int depth = 0; t != null && depth < 12 && found == null; depth++, t = t.BaseType)
+                {
+                    var managed = asm.GetType("Il2Cpp." + t.FullName);
+                    if (managed != null)
+                        found = managed.GetMethod(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, sig, null);
+                    if (t.Name == "Zombie") break;
+                }
+                DeclaredByClass[key] = found;
+            }
+            if (found == null) throw new System.MissingMethodException(key);
+            var wrapper = System.Activator.CreateInstance(found.DeclaringType, z.Pointer);
+            try { found.Invoke(wrapper, args); }
+            catch (TargetInvocationException e) { throw e.InnerException ?? e; }
+        }
+
         // ---------- bites ----------
         // Each bite's plant flash and chomp sound come from Zombie.AttackEffect, which AttackUpdate calls;
         // puppets don't run AttackUpdate, so the host sends every bite and the puppet plays it.
@@ -311,6 +449,12 @@ namespace FusionCoop.Coop
                     return true;
                 case Msg.ZombieBite:
                     ReplayBite(pkt);
+                    return true;
+                case Msg.ZombieGarlic:
+                    ReplayGarlic(pkt);
+                    return true;
+                case Msg.PlantFlash:
+                    ReplayFlash(pkt);
                     return true;
                 default:
                     return false;

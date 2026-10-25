@@ -109,11 +109,16 @@ namespace FusionCoop.Net
         // either way: (byte kind 0 bucket / 1 helmet / 2 bean, int bucketType, sbyte col, sbyte row, int plantType
         // (bean), byte owner) a player used an item on that cell; the host passes a client's on
         ItemUsed = 69,
+        // host -> clients: (uint zombieId, sbyte col, sbyte row, int plantType (col -1: none), float time,
+        // bool sound) a zombie ate garlic (Zombie.EatGarlic: flash, sound, stinky face)
+        ZombieGarlic = 70,
+        // host -> clients: (sbyte col, sbyte row, int plantType) that plant flashes (Plant.FlashOnce outside a bite)
+        PlantFlash = 71,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 28;
+        internal const int Version = 29;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
