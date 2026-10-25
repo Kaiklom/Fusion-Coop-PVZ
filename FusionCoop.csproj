@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Reference Include="MelonLoader"><HintPath>$(MLDir)\net6\MelonLoader.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(MLDir)\net6\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(MLDir)\net6\0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2CppInterop.Runtime"><HintPath>$(MLDir)\net6\Il2CppInterop.Runtime.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2CppInterop.Common"><HintPath>$(MLDir)\net6\Il2CppInterop.Common.dll</HintPath><Private>false</Private></Reference>

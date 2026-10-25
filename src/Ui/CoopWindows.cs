@@ -55,6 +55,12 @@ namespace FusionCoop.Ui
                 {
                     _testTabDone = true;
                     ShowOwners = true;
+                    if (Session.Role == Role.Host)
+                        for (int i = 0; i < 2; i++)
+                        {
+                            var p = Coop.PlantSync.Replay(2 + i, 2, PlantType.Peashooter, null, true);
+                            if (p != null) Coop.PlantSync.SetOwner(p, (byte)i);
+                        }
                     OpenTab();
                 }
             }
@@ -78,6 +84,8 @@ namespace FusionCoop.Ui
             }
             if (_tab != null && (!inLevel || !Session.Active)) CloseTab();
             TestStep(inLevel);
+            Coop.PlantSync.PruneOwners();
+            OwnerBadges.Update();
             if (_room != null) RefreshRoom();
             if (_tab != null) RefreshTab();
         }
@@ -347,21 +355,29 @@ namespace FusionCoop.Ui
             }
         }
 
+        // The small dialog (gameover sprite) is stretched to fit, and its parts scale with it: the skull plate on
+        // top (title), the dark screen from DarkTop to DarkBottom of the height (players and options), the stone
+        // below it (buttons). The height is chosen so the dark screen holds every row.
+        private const float DarkTop = 0.30f, DarkBottom = 0.66f, RowStep = 40f;
+
         private static void BuildTab()
         {
             _tabLayout = TabLayout();
-            _tab = GameUi.Empty(Top(), "FusionCoopPlayers", new Vector2(0, 210), new Vector2(10, 10));
-            _tab.transform.localScale = new Vector3(TabScale, TabScale, 1f);
             var ids = Session.Names.Keys.OrderBy(k => k).ToList();
             bool host = Session.Role == Role.Host;
-            float h = 150 + 40 * ids.Count;
+            int rows = ids.Count + 1; // players + the owner tag options
+            float h = Mathf.Max(300f, (RowStep * rows + 16f) / (DarkBottom - DarkTop));
+            float scale = Mathf.Min(TabScale, 900f / h);
+            _tab = GameUi.Empty(Top(), "FusionCoopPlayers", new Vector2(0, 520 - h * scale / 2), new Vector2(10, 10));
+            _tab.transform.localScale = new Vector3(scale, scale, 1f);
             var frame = GameUi.Frame(_tab.transform, Vector2.zero, new Vector2(620, h)).transform;
-            float y = h / 2 - 40;
-            GameUi.Label(frame, "Players", new Vector2(0, y), new Vector2(300, 40), 28, GameUi.Gold);
+            float top = h / 2;
+            GameUi.Label(frame, "Players", new Vector2(0, top - 0.16f * h), new Vector2(300, 40), 28, GameUi.Gold);
+
+            float y = top - DarkTop * h - RowStep / 2 - 4;
             _rows.Clear();
             foreach (var id in ids)
             {
-                y -= 40;
                 var color = Overlay.PlayerColors[id % Overlay.PlayerColors.Length];
                 var name = GameUi.Label(frame, "", new Vector2(-135, y), new Vector2(200, 34), 20, color, TextAlignmentOptions.Left);
                 var state = GameUi.Label(frame, "", new Vector2(30, y), new Vector2(110, 34), 18, GameUi.Cream);
@@ -372,28 +388,48 @@ namespace FusionCoop.Ui
                     GameUi.Button(frame, "Kick", new Vector2(198, y), new Vector2(70, 32), false, () => Session.Kick(kick), 16);
                 }
                 _rows.Add((id, name, state, ping));
+                y -= RowStep;
             }
-            y -= 46;
-            GameUi.CheckBox(frame, new Vector2(-250, y), ShowOwners, on => ShowOwners = on);
-            GameUi.Label(frame, "Show plant owners", new Vector2(-110, y), new Vector2(240, 34), 18, GameUi.Cream, TextAlignmentOptions.Left);
-            float bx = 70;
-            if (host && Coop.LevelSync.Choosing)
+
+            GameUi.CheckBox(frame, new Vector2(-215, y), ShowOwners, on =>
             {
-                GameUi.Button(frame, "Force start", new Vector2(bx, y), new Vector2(130, 40), false, Coop.LevelSync.ForceStart, 16);
-                bx += 140;
-            }
-            if (Coop.LevelSync.CanRejoin)
+                ShowOwners = on;
+                FusionCoopMod.OwnerTags = on;
+            });
+            GameUi.Label(frame, "Show plant owners", new Vector2(-90, y), new Vector2(210, 34), 18, GameUi.Cream, TextAlignmentOptions.Left);
+            GameUi.Btn style = null;
+            style = GameUi.Button(frame, StyleText(), new Vector2(150, y), new Vector2(170, 36), false, () =>
             {
-                GameUi.Button(frame, "Rejoin", new Vector2(bx, y), new Vector2(110, 40), false, Coop.LevelSync.RequestRejoin, 16);
-                bx += 120;
-            }
-            GameUi.Button(frame, "Leave room", new Vector2(Mathf.Max(bx, 225), y), new Vector2(130, 40), false, () =>
+                FusionCoopMod.OwnerTagStyle = (FusionCoopMod.OwnerTagStyle + 1) % 3;
+                OwnerBadges.Clear();
+                style.SetText(StyleText());
+            }, 16);
+
+            // buttons on the stone under the screen
+            float by = top - (DarkBottom + 1f) / 2f * h;
+            var buttons = new List<(string text, System.Action act)>();
+            if (host && Coop.LevelSync.Choosing) buttons.Add(("Force start", Coop.LevelSync.ForceStart));
+            if (Coop.LevelSync.CanRejoin) buttons.Add(("Rejoin", Coop.LevelSync.RequestRejoin));
+            buttons.Add(("Leave room", () =>
             {
                 CloseTab();
                 Session.Stop();
-            }, 16);
+            }));
+            float bw = 150, gap = 20, bx = -(buttons.Count * bw + (buttons.Count - 1) * gap) / 2 + bw / 2;
+            foreach (var (text, act) in buttons)
+            {
+                GameUi.Button(frame, text, new Vector2(bx, by), new Vector2(bw, 40), false, act, 16);
+                bx += bw + gap;
+            }
             RefreshTab();
         }
+
+        private static string StyleText() => FusionCoopMod.OwnerTagStyle switch
+        {
+            0 => "Tag style: Stone",
+            1 => "Tag style: Gold",
+            _ => "Tag style: Text",
+        };
 
         private static void CloseTab()
         {

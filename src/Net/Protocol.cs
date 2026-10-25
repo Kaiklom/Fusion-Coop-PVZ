@@ -143,11 +143,13 @@ namespace FusionCoop.Net
         MixCardDrop = 83,
         // host -> clients: (byte placer) that player placed a zombie giftbox; everyone else gets its 100 sun too
         GiftboxSun = 84,
+        // host -> clients: (string json) the host's Magnetar modules that change the game (MagnetarSync)
+        MagnetarState = 85,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 36;
+        internal const int Version = 37;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

@@ -3,9 +3,9 @@ using UnityEngine;
 
 namespace FusionCoop
 {
-    // IMGUI overlay: messages in the middle of the screen, the plant owner badges, and the F8 debug panel
+    // IMGUI overlay: messages in the middle of the screen and the F8 debug panel
     // (hidden until F8). The player-facing windows are Ui.CoopWindows. This build strips GUI.Button/TextField,
-    // so only Label/Box/DrawTexture are used and the debug panel works through hotkeys.
+    // so only Label/Box are used (DrawTexture is stripped too) and the debug panel works through hotkeys.
     internal static class Overlay
     {
         internal static bool PanelOpen;
@@ -97,7 +97,6 @@ namespace FusionCoop
         {
             ApplyStyle();
             var cam = Camera.main;
-            if (cam != null && Ui.CoopWindows.ShowOwners) Coop.PlantSync.DrawLabels(cam);
             if (PanelOpen && cam != null) DrawCursors(cam);
             DrawCenterMessages();
             if (!PanelOpen) return;
@@ -121,7 +120,7 @@ namespace FusionCoop
                 Text(new Rect(x + 12, ty, w - 24, line + 4), t, c);
                 ty += line;
             }
-            Row("FusionCoop 0.13.0", HeadColor);
+            Row("FusionCoop 0.13.1", HeadColor);
             Row($"status: {Session.Status}", TextColor);
             Row($"role: {role}    ping: {rtt}", TextColor);
             Row($"players: {players}", TextColor);
@@ -130,22 +129,6 @@ namespace FusionCoop
             Row("[F9] host   [F10] join   [F11] leave   [F8] hide", HintColor);
             if (Coop.TestTools.Enabled)
                 Row($"test: [F5/F6] {Coop.TestTools.Selected}  [9] spawn  [F4] +sun", HeadColor);
-        }
-
-        // A small player tag: dark edge, the player's colour, white text.
-        private static Texture2D _white;
-
-        internal static void Badge(float x, float y, string text, Color color)
-        {
-            if (_white == null) _white = Texture2D.whiteTexture;
-            const float w = 30, h = 20;
-            var old = GUI.color;
-            GUI.color = new Color(0.1f, 0.07f, 0.03f, 0.9f);
-            GUI.DrawTexture(new Rect(x - 1, y - 1, w + 2, h + 2), _white);
-            GUI.color = new Color(color.r * 0.8f, color.g * 0.8f, color.b * 0.8f, 0.95f);
-            GUI.DrawTexture(new Rect(x, y, w, h), _white);
-            GUI.color = old;
-            Text(new Rect(x + 4, y - 1, w, h + 4), text, TextColor);
         }
 
         // Debug (F8): where the other players' mice are.

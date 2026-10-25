@@ -627,22 +627,12 @@ namespace FusionCoop.Coop
 
         private static readonly List<int> Dead = new();
 
-        internal static void DrawLabels(Camera cam)
+        // Forget plants that are gone.
+        internal static void PruneOwners()
         {
             Dead.Clear();
             foreach (var kv in Owners)
-            {
-                var p = kv.Value.Plant;
-                if (p == null)
-                {
-                    Dead.Add(kv.Key);
-                    continue;
-                }
-                var sp = cam.WorldToScreenPoint(p.transform.position);
-                float gx = sp.x, gy = Screen.height - sp.y;
-                byte o = kv.Value.Owner;
-                Overlay.Badge(gx - 15, gy + 4, $"P{o + 1}", Overlay.PlayerColors[o % Overlay.PlayerColors.Length]);
-            }
+                if (kv.Value.Plant == null) Dead.Add(kv.Key);
             foreach (var id in Dead) Owners.Remove(id);
         }
     }

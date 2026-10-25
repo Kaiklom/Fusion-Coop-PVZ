@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.13.0", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.13.1", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -26,6 +26,29 @@ namespace FusionCoop
         }
 
         internal static string LastIp => _lastIp.Value;
+
+        private static MelonPreferences_Entry<bool> _ownerTags;
+        private static MelonPreferences_Entry<int> _ownerTagStyle;
+
+        internal static bool OwnerTags
+        {
+            get => _ownerTags.Value;
+            set
+            {
+                _ownerTags.Value = value;
+                MelonPreferences.Save();
+            }
+        }
+
+        internal static int OwnerTagStyle
+        {
+            get => _ownerTagStyle.Value;
+            set
+            {
+                _ownerTagStyle.Value = value;
+                MelonPreferences.Save();
+            }
+        }
 
         internal static void HostRoom() => Session.StartHost(_port.Value, _name.Value);
 
@@ -67,6 +90,9 @@ namespace FusionCoop
             _testTools = cat.CreateEntry("TestTools", true, "Testing: F5/F6 pick a zombie, 9 (host) spawns it in the lane under the cursor, F4 +1000 sun");
             Coop.TestTools.Enabled = _testTools.Value;
             UiDump.Enabled = cat.CreateEntry("UiDump", false, "Research: write the game's UI to UserData/ui_dump.txt once the main menu is up").Value;
+            _ownerTags = cat.CreateEntry("OwnerTags", false, "Show P1/P2 tags under the plants players placed (Tab window)");
+            _ownerTagStyle = cat.CreateEntry("OwnerTagStyle", 1, "Owner tag look: 0 stone button, 1 gold box, 2 text only");
+            Ui.CoopWindows.ShowOwners = _ownerTags.Value;
             Ui.CoopWindows.TestOpen = cat.CreateEntry("UiTest", false, "Testing: open the co-op windows by themselves for screenshots").Value;
             Overlay.IpDraft = _lastIp.Value;
 
@@ -85,6 +111,7 @@ namespace FusionCoop
             Coop.MultiChoiceSync.Init();
             Coop.MixBombSync.Init();
             Ui.CoopWindows.Init();
+            Coop.MagnetarSync.Init();
             PatchAll(new[]
             {
                 typeof(Coop.PlantSync.TryToSetPlantByCardPatch),
@@ -241,6 +268,7 @@ namespace FusionCoop
             Coop.LevelSweep.Update();
             UiDump.Update();
             Ui.CoopWindows.Update();
+            Coop.MagnetarSync.Update();
             Coop.SpeedSync.Update();
             Coop.LevelSync.Update();
             Coop.ZombieSync.Update();

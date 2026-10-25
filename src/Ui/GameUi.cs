@@ -22,6 +22,11 @@ namespace FusionCoop.Ui
         private static Sprite _blank; // a plain white sprite (UISprite of the scroll bars)
         private static bool _loaded, _failed;
 
+        internal static Sprite BlankSprite => _blank;
+        internal static Sprite StoneSprite => _button != null ? _button.GetComponent<Image>().sprite : null;
+        internal static Sprite GoldSprite => _input != null ? _input.GetComponent<Image>().sprite : null;
+        internal static TMP_FontAsset Font => _font;
+
         internal static readonly Color Gold = new(1f, 0.85f, 0.3f);
         internal static readonly Color Cream = new(1f, 0.96f, 0.86f);
         internal static readonly Color Dim = new(0.75f, 0.75f, 0.7f);
