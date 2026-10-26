@@ -300,7 +300,7 @@ namespace FusionCoop.Ui
             "Only the host chooses the level.",
             "The battle starts once every player has pressed start.",
             "The host can force start from the players window (Tab).",
-            "Only the host can pause; the host's pause stops everyone.",
+            "Only the host can pause or change the game speed and difficulty.",
             "Only the host can restart the level.",
             "The host picks Odyssey buffs, blessings and Magnetar modules.",
             "The host collects the trophy at the end of a level.",

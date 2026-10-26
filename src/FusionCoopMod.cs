@@ -121,6 +121,8 @@ namespace FusionCoop
                 typeof(Coop.ShovelGloveSync.TryToPickPlantPatch),
                 typeof(Coop.ShovelGloveSync.TryToSetPlantByGlovePatch),
                 typeof(Coop.SpeedSync.BackToGamePatch),
+                typeof(Coop.SpeedSync.DifficultySliderPatch),
+                typeof(Coop.SpeedSync.SpeedSliderPatch),
                 typeof(Coop.LevelSync.EnterGamePatch),
                 typeof(Coop.LevelSync.EnterIZGamePatch),
                 typeof(Coop.LevelSync.TravelRoundPatch),

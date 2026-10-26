@@ -27,7 +27,8 @@ namespace FusionCoop.Net
         PlantRemoved = 35,
         // both ways: byte owner, sbyte fromCol, sbyte fromRow, int fromType, sbyte toCol, sbyte toRow, int placeType
         PlantMoved = 36,
-        // host -> clients: float timeScale (0 = paused); client -> host: float timeScale (> 0)
+        // host -> clients, on change and 1 Hz: float timeScale (0 = paused), int difficulty (the board's locked
+        // difficulty, else the setting)
         SpeedSet = 37,
         // host -> clients: int levelType, int levelNumber, int id, bool hasName, [string name]
         LevelEnter = 38,
@@ -149,7 +150,7 @@ namespace FusionCoop.Net
 
     internal static class Protocol
     {
-        internal const int Version = 37;
+        internal const int Version = 38;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
