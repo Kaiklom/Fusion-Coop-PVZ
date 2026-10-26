@@ -555,8 +555,14 @@ namespace FusionCoop.Coop
                             SetOwner(existing, owner);
                             continue;
                         }
-                        var plant = Replay(col, row, type);
-                        if (plant == null) continue;
+                        // Plants the game put down itself (tutorial lessons, level layouts) were placed with
+                        // isFreeSet and may fail the normal checks here: the host has them, so place them freely.
+                        var plant = Replay(col, row, type) ?? Replay(col, row, type, null, true);
+                        if (plant == null)
+                        {
+                            FusionCoopMod.Log.Warning($"[plant] snapshot: could not place {type} c{col} r{row}");
+                            continue;
+                        }
                         SetOwner(plant, owner);
                         made++;
                     }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using FusionCoop.Net;
+using Il2CppTMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -69,17 +70,23 @@ namespace FusionCoop.Ui
             if (top == null || !GameUi.Load()) return;
             var area = top.GetComponent<RectTransform>().rect;
             var pos = new Vector2((AtX - 0.5f) * area.width, (0.5f - AtY) * area.height);
-            var size = new Vector2(440, 58);
+            var size = new Vector2(400, 70);
 
+            // the game's small stone button (as the Stone owner tags), stretched; nine-sliced when the sprite allows
             _shown = GameUi.Empty(top, "FusionCoopReady", pos, size);
             var plate = _shown.AddComponent<Image>();
-            plate.sprite = GameUi.BlankSprite;
-            plate.color = new Color(0f, 0f, 0f, 0.6f);
+            var stone = GameUi.StoneSprite;
+            plate.sprite = stone != null ? stone : GameUi.BlankSprite;
+            if (stone == null) plate.color = new Color(0f, 0f, 0f, 0.6f);
+            else if (stone.border.sqrMagnitude > 0) plate.type = Image.Type.Sliced;
 
             string name = Session.Names.TryGetValue(id, out var n) ? n : "";
             string you = id == Session.LocalId ? " (you)" : "";
             var color = Overlay.PlayerColors[id % Overlay.PlayerColors.Length];
-            GameUi.Label(_shown.transform, $"P{id + 1} {name}{you} is ready", Vector2.zero, size - new Vector2(20, 0), 30, color);
+            var t = GameUi.Label(_shown.transform, $"P{id + 1} {name}{you} is ready", new Vector2(0, 2), size - new Vector2(40, 10), 28, color);
+            t.fontStyle = FontStyles.Bold;
+            t.outlineWidth = 0.28f;
+            t.outlineColor = new Color32(30, 20, 10, 255);
         }
     }
 }

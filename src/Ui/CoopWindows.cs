@@ -91,6 +91,7 @@ namespace FusionCoop.Ui
             Coop.PlantSync.PruneOwners();
             OwnerBadges.Update();
             ReadyBanner.Update();
+            PlayerTag.Update();
             if (_room != null) RefreshRoom();
             if (_tab != null) RefreshTab();
         }

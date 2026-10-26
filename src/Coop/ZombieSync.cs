@@ -428,23 +428,66 @@ namespace FusionCoop.Coop
 
         // LevelProgress.Update moves the bar towards theWave / theMaxWave (or the boss's health): down at once,
         // but up only a little each frame. A client that joins or rejoins mid-level gets the host's wave in one
-        // go, so its bar would crawl up from 0 for a long while. The first time a bar runs with the host's wave
-        // known, if waves have already passed, the bar is set full just before the game's update, which then drops it to the right value in that frame.
-        private static int _snappedBar;
+        // go, so its bar would crawl up from 0 for a long while. Once per board, when the host's wave for this
+        // board is known and waves have already passed, the bar is set full just before the game's update, which
+        // then drops it to the right value in that frame. (Per board, not per bar: the bar may outlive a level.)
+        private static int _snappedBoard;
 
         [HarmonyPatch(typeof(LevelProgress), "Update")]
         internal static class LevelProgressPatch
         {
             private static void Prefix(LevelProgress __instance)
             {
-                if (!IsClient || _hostWave < 0) return;
-                int id = __instance.GetInstanceID();
-                if (id == _snappedBar || __instance.slider == null) return;
-                _snappedBar = id;
+                var board = Board.Instance;
+                if (!IsClient || board == null || _hostWave < 0 || board.GetInstanceID() != _clientBoardId) return;
+                if (_snappedBoard == _clientBoardId || __instance.slider == null) return;
+                _snappedBoard = _clientBoardId;
                 if (_hostWave == 0) return; // here from the start: the bar follows on its own
                 __instance.slider.value = __instance.slider.maxValue;
                 FusionCoopMod.Log.Msg($"[zombie] progress bar caught up to wave {_hostWave}");
             }
+        }
+
+        // The game brings up the wave progress bar (and moves the level name) in NewZombieUpdate, on the step
+        // from wave 0 to 1. A client that joins mid-level takes the host's wave without that step, so its bar
+        // never came up. Once per board, past wave 0, the same is done here if the bar isn't up yet.
+        private static int _barShownBoard;
+
+        private static void EnsureWaveUi(Board board)
+        {
+            int id = board.GetInstanceID();
+            if (board.theWave <= 0 || _barShownBoard == id) return;
+            _barShownBoard = id;
+            var ui = InGameUI.Instance;
+            if (ui == null) return;
+            var tag = board.boardTag;
+            if (!tag.isLookStar && !tag.isBrick)
+            {
+                var bar = tag.playerShooting || tag.isTreasure ? ui.progress2 : ui.LevProgress;
+                if (bar == null || bar.activeSelf) return; // the game did it
+                bar.SetActive(true);
+            }
+            if (ui.LevelName2 != null) ui.LevelName2.gameObject.SetActive(false);
+            if (ui.LevelName3 != null) ui.LevelName3.gameObject.SetActive(true);
+            FusionCoopMod.Log.Msg($"[zombie] joined at wave {board.theWave}: wave progress bar brought up");
+        }
+
+        // The wave step (one run of NewZombieUpdate) doesn't happen when the game skips that code, e.g. while a
+        // tutorial holds the waves back: then the client's wave would stay one behind. After a moment the
+        // host's counters are simply taken.
+        private static double _stepAskedAt;
+
+        private static void CheckWaveStep()
+        {
+            if (!_allowWaveStep || Session.Now - _stepAskedAt < 1.5) return;
+            _allowWaveStep = false;
+            var board = Board.Instance;
+            if (board == null || _hostWave < 0) return;
+            board.theWave = _hostWave;
+            board.timeUntilNextWave = _hostUntil;
+            board.isHugeWave = _hostHuge;
+            board.hugeWaveCountDown = _hostCountdown;
+            FusionCoopMod.Log.Msg($"[zombie] wave step didn't run: took the host's wave {_hostWave}");
         }
 
         // ---------- host: send ----------
@@ -454,7 +497,12 @@ namespace FusionCoop.Coop
         internal static void Update()
         {
             if (Session.Role == Role.Host) HostUpdate();
-            else if (IsClient) ClientSmooth();
+            else if (IsClient)
+            {
+                ClientSmooth();
+                CheckWaveStep();
+                if (Board.Instance != null && _hostWave >= 0 && !_allowWaveStep) EnsureWaveUi(Board.Instance);
+            }
             if (Session.Ready && Board.Instance != null && Session.Now >= _nextReport)
             {
                 _nextReport = Session.Now + 5;
@@ -662,6 +710,7 @@ namespace FusionCoop.Coop
                 board.timeUntilNextWave = 0f;
                 board.isHugeWave = false;
                 _allowWaveStep = true;
+                _stepAskedAt = Session.Now;
                 _hugeShownForNext = true;
             }
             else if (wave > _hostWave && board.theWave < wave)
@@ -681,6 +730,7 @@ namespace FusionCoop.Coop
                     board.hugeWaveCountDown = warnedWave ? 1e6f : 0f;
                 }
                 _allowWaveStep = true;
+                _stepAskedAt = Session.Now;
             }
             _hostWave = wave;
             _hostHuge = huge;

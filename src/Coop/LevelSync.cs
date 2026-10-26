@@ -528,6 +528,27 @@ namespace FusionCoop.Coop
             }
         }
 
+        // Tutorial levels (Adventure 1, 4, 7, ...) are played without the lesson in a room: each window ran its
+        // own lesson, which held its waves back until that player did the steps, and the plants it put down
+        // were lost on rejoin. The game skips the lesson when Options > "disable level tutorial" is on, so that
+        // setting is on while a level is set up in a room, and the player's own value is put back right after.
+        [HarmonyPatch(typeof(Board), nameof(Board.SetUniqueLevel))]
+        internal static class NoTutorialPatch
+        {
+            private static void Prefix(out bool __state)
+            {
+                var cfg = GameAPP.config;
+                __state = cfg != null && cfg.disablelevelTutor;
+                if (cfg != null && Session.Active) cfg.disablelevelTutor = true;
+            }
+
+            private static void Postfix(bool __state)
+            {
+                var cfg = GameAPP.config;
+                if (cfg != null) cfg.disablelevelTutor = __state;
+            }
+        }
+
         [HarmonyPatch(typeof(UIMgr), nameof(UIMgr.EnterLoseMenu))]
         internal static class EnterLoseMenuPatch
         {
