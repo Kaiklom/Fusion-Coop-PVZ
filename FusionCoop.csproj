@@ -10,6 +10,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <!-- Don't put this PC's folders (user name) into the DLL: the debug info path becomes /_/... -->
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
     <!-- Game version to build against: ..\games\<version> (4.0.5 only; the 3.8.1 build is git tag 3.8.1-final) -->
     <GameVersion Condition="'$(GameVersion)' == ''">4.0.5</GameVersion>
     <GameDir>$(MSBuildProjectDirectory)\..\games\$(GameVersion)</GameDir>
