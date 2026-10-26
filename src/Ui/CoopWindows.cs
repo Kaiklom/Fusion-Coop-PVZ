@@ -195,6 +195,7 @@ namespace FusionCoop.Ui
             try
             {
                 BuildRoom();
+                MuteBehind();
             }
             catch (System.Exception e)
             {
@@ -264,6 +265,30 @@ namespace FusionCoop.Ui
             CloseRules();
             if (_room != null) Object.Destroy(_room);
             _room = null;
+            UnmuteBehind();
+        }
+
+        // The blocker sheet doesn't stop every click: the main menu's buttons take the mouse ray before it. While
+        // the co-op window is open, every other clickable thing in the scene is switched off.
+        private static readonly List<Behaviour> _muted = new();
+
+        private static void MuteBehind()
+        {
+            UnmuteBehind();
+            foreach (var c in Object.FindObjectsOfType<Collider2D>())
+                if (c.enabled && !c.transform.IsChildOf(_room.transform))
+                {
+                    c.enabled = false;
+                    _muted.Add(c);
+                }
+            FusionCoopMod.Log.Msg($"[ui] co-op window: {_muted.Count} clickable things behind it switched off");
+        }
+
+        private static void UnmuteBehind()
+        {
+            foreach (var c in _muted)
+                if (c != null) c.enabled = true;
+            _muted.Clear();
         }
 
         // ---------- rules page (the room window's "Rules" button) ----------

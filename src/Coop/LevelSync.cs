@@ -488,6 +488,46 @@ namespace FusionCoop.Coop
             }
         }
 
+        // The pause menu's "restart" button: on a client it is greyed out and takes no clicks (its confirm
+        // dialog never opens). Restart above still blocks it in case it is reached some other way.
+        private static bool IsRestartButton(PauseMenu_Btn b) => b != null && b.gameObject.name == "restart";
+
+        private static void GreyOut(PauseMenu_Btn b)
+        {
+            var img = b.GetComponent<UnityEngine.UI.Image>();
+            if (img != null) img.color = new UnityEngine.Color(0.55f, 0.55f, 0.55f, 1f);
+            foreach (var t in b.GetComponentsInChildren<Il2CppTMPro.TMP_Text>(true)) t.alpha = 0.4f;
+        }
+
+        [HarmonyPatch(typeof(PauseMenu_Btn), "Start")]
+        internal static class RestartButtonStartPatch
+        {
+            private static void Postfix(PauseMenu_Btn __instance)
+            {
+                if (IsClient && IsRestartButton(__instance)) GreyOut(__instance);
+            }
+        }
+
+        [HarmonyPatch]
+        internal static class RestartButtonMousePatch
+        {
+            private static IEnumerable<MethodBase> TargetMethods()
+            {
+                foreach (var name in new[] { "OnMouseDown", "OnMouseEnter", "OnMouseExit", "OnMouseUp" })
+                {
+                    var m = AccessTools.Method(typeof(PauseMenu_Btn), name);
+                    if (m != null) yield return m;
+                }
+            }
+
+            private static bool Prefix(PauseMenu_Btn __instance)
+            {
+                if (!IsClient || !IsRestartButton(__instance)) return true;
+                GreyOut(__instance);
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(UIMgr), nameof(UIMgr.EnterLoseMenu))]
         internal static class EnterLoseMenuPatch
         {

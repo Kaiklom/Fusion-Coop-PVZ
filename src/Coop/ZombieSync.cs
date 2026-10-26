@@ -426,6 +426,27 @@ namespace FusionCoop.Coop
             }
         }
 
+        // LevelProgress.Update moves the bar towards theWave / theMaxWave (or the boss's health): down at once,
+        // but up only a little each frame. A client that joins or rejoins mid-level gets the host's wave in one
+        // go, so its bar would crawl up from 0 for a long while. The first time a bar runs with the host's wave
+        // known, if waves have already passed, the bar is set full just before the game's update, which then drops it to the right value in that frame.
+        private static int _snappedBar;
+
+        [HarmonyPatch(typeof(LevelProgress), "Update")]
+        internal static class LevelProgressPatch
+        {
+            private static void Prefix(LevelProgress __instance)
+            {
+                if (!IsClient || _hostWave < 0) return;
+                int id = __instance.GetInstanceID();
+                if (id == _snappedBar || __instance.slider == null) return;
+                _snappedBar = id;
+                if (_hostWave == 0) return; // here from the start: the bar follows on its own
+                __instance.slider.value = __instance.slider.maxValue;
+                FusionCoopMod.Log.Msg($"[zombie] progress bar caught up to wave {_hostWave}");
+            }
+        }
+
         // ---------- host: send ----------
 
         private static double _nextReport;
