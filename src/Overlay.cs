@@ -14,8 +14,12 @@ namespace FusionCoop
         private static string _toast;
         private static double _toastUntil;
 
+        // Short messages (host paused, only the host can..., P2 is ready, ...) are off for players: they found them
+        // too many. They go to the log, and on screen only while the F8 debug panel is open. The co-op window's
+        // Rules page explains these rules up front instead.
         internal static void Toast(string text, double seconds = 2.5)
         {
+            FusionCoopMod.Log.Msg($"[toast] {text}");
             _toast = text;
             _toastUntil = Session.Now + seconds;
         }
@@ -75,8 +79,21 @@ namespace FusionCoop
             Text(new Rect(cx - w / 2 + 12, y + 7, w - 24, 24), text, TextColor);
         }
 
+        // A message that is always shown (losing the room when the game's message bar isn't there).
+        private static string _alert;
+        private static double _alertUntil;
+
+        internal static void Alert(string text, double seconds = 4)
+        {
+            _alert = text;
+            _alertUntil = Session.Now + seconds;
+        }
+
         private static void DrawCenterMessages()
         {
+            if (_alert != null && Session.Now < _alertUntil)
+                Message(Screen.height * 0.3f, _alert);
+            if (!PanelOpen) return;
             if (Coop.SpeedSync.HostPaused)
                 Message(Screen.height * 0.3f, "PAUSED BY HOST - waiting for the host to resume");
             string rejoin = Coop.LevelSync.RejoinText();

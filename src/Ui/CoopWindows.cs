@@ -76,7 +76,11 @@ namespace FusionCoop.Ui
             }
             bool inLevel = Board.Instance != null && MainMenuOpen() == null;
             if (_room != null && inLevel) CloseRoom();
-            if (Input.GetKeyDown(KeyCode.Escape) && _room != null) CloseRoom();
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (_rulesWindow != null) CloseRules();
+                else if (_room != null) CloseRoom();
+            }
             if (inLevel && Session.Active && Input.GetKeyDown(KeyCode.Tab))
             {
                 if (_tab != null) CloseTab();
@@ -86,15 +90,19 @@ namespace FusionCoop.Ui
             TestStep(inLevel);
             Coop.PlantSync.PruneOwners();
             OwnerBadges.Update();
+            ReadyBanner.Update();
             if (_room != null) RefreshRoom();
             if (_tab != null) RefreshTab();
         }
 
         // ---------- notices ----------
 
+        // Only losing the room (disconnected, kicked, rejected) is shown, in the game's message bar; other notices
+        // (joined, left, connected) only go to the log: players found them too many.
         private static void Notify(string text)
         {
             FusionCoopMod.Log.Msg($"[notice] {text}");
+            if (!text.StartsWith("Disconnected") && !text.StartsWith("rejected")) return;
             try
             {
                 var bar = Il2CppCore.InGameText.Instance;
@@ -108,7 +116,7 @@ namespace FusionCoop.Ui
             {
                 // fall back below
             }
-            Overlay.Toast(text, 3);
+            Overlay.Alert(text);
         }
 
         // ---------- main menu button ----------
@@ -237,21 +245,82 @@ namespace FusionCoop.Ui
                 GameUi.Label(frame, $"{name}:  {ip}", new Vector2(-70, iy), new Vector2(460, 30), 20, GameUi.Cream,
                     TextAlignmentOptions.Left);
                 string copy = ip;
-                GameUi.Button(frame, "Copy", new Vector2(230, iy), new Vector2(90, 34), false, () =>
+                GameUi.Btn copyButton = null;
+                copyButton = GameUi.Button(frame, "Copy", new Vector2(230, iy), new Vector2(90, 34), false, () =>
                 {
                     GUIUtility.systemCopyBuffer = copy;
-                    Notify($"Copied {copy}");
+                    FusionCoopMod.Log.Msg($"[notice] Copied {copy}");
+                    copyButton.SetText("Copied");
                 }, 16);
             }
 
-            GameUi.Button(frame, "Close", new Vector2(0, -top + 62), new Vector2(200, 52), true, CloseRoom, 22);
+            GameUi.Button(frame, "Rules", new Vector2(-120, -top + 62), new Vector2(200, 52), true, OpenRules, 22);
+            GameUi.Button(frame, "Close", new Vector2(120, -top + 62), new Vector2(200, 52), true, CloseRoom, 22);
             RefreshRoom();
         }
 
         private static void CloseRoom()
         {
+            CloseRules();
             if (_room != null) Object.Destroy(_room);
             _room = null;
+        }
+
+        // ---------- rules page (the room window's "Rules" button) ----------
+
+        // What only the host may do and other co-op rules, so the game doesn't have to pop up a message each time.
+        private static readonly string[] Rules =
+        {
+            "Only the host chooses the level.",
+            "The battle starts once every player has pressed start.",
+            "The host can force start from the players window (Tab).",
+            "Only the host can pause; the host's pause stops everyone.",
+            "Only the host can restart the level.",
+            "The host picks Odyssey buffs, blessings and Magnetar modules.",
+            "The host collects the trophy at the end of a level.",
+            "Joining a running level: choose your cards and press start.",
+            "Main menu leaves the level but not the room; Rejoin brings you back.",
+            "Puzzle (I, Zombie) and some challenges are single player only.",
+            "In a level, Tab shows players, ping and plant owner tags.",
+        };
+
+        private static GameObject _rulesWindow;
+
+        private static void OpenRules()
+        {
+            if (_rulesWindow != null || Top() == null) return;
+            try
+            {
+                _rulesWindow = GameUi.Empty(Top(), "FusionCoopRules", Vector2.zero, new Vector2(10, 10));
+                var root = _rulesWindow.transform;
+                // the room window steps aside, so its buttons can't take the clicks
+                if (_room != null) _room.SetActive(false);
+                GameUi.Blocker(root);
+                var size = GameUi.BigFrame(root, Vector2.zero, 860);
+                var frame = GameUi.Empty(root, "Content", Vector2.zero, size).transform;
+                float top = size.y / 2;
+                GameUi.Label(frame, "Co-op rules", new Vector2(0, top - 108), new Vector2(400, 56), 44, GameUi.Gold);
+                float y = top - 158, step = 30;
+                foreach (var rule in Rules)
+                {
+                    GameUi.Label(frame, "-", new Vector2(-330, y), new Vector2(20, 28), 20, GameUi.Gold);
+                    GameUi.Label(frame, rule, new Vector2(25, y), new Vector2(690, 28), 20, GameUi.Cream, TextAlignmentOptions.Left);
+                    y -= step;
+                }
+                GameUi.Button(frame, "Back", new Vector2(0, -top + 62), new Vector2(200, 52), true, CloseRules, 22);
+            }
+            catch (System.Exception e)
+            {
+                FusionCoopMod.Log.Error($"[ui] can't build the rules page: {e}");
+                CloseRules();
+            }
+        }
+
+        private static void CloseRules()
+        {
+            if (_rulesWindow != null) Object.Destroy(_rulesWindow);
+            _rulesWindow = null;
+            if (_room != null) _room.SetActive(true);
         }
 
         private static void RefreshRoom()

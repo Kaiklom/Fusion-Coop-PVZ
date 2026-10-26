@@ -452,7 +452,11 @@ namespace FusionCoop.Coop
                 _startBtn = __instance;
                 if (IsHost && _onLevel && !_battleStarted)
                 {
-                    if (ReadyPlayers.Add(0)) Session.SendToClients(BuildReady());
+                    if (ReadyPlayers.Add(0))
+                    {
+                        Ui.ReadyBanner.Ready(0);
+                        Session.SendToClients(BuildReady());
+                    }
                     if (AllReady()) return true;
                     Overlay.Toast($"Ready - waiting for {Waiting()} to choose cards");
                     return false;
@@ -560,7 +564,7 @@ namespace FusionCoop.Coop
             }
             if (pkt.Type != Msg.BattleReady || !_onLevel || _battleStarted) return;
             if (!ReadyPlayers.Add(from)) return;
-            Overlay.Toast($"P{from + 1} is ready");
+            Ui.ReadyBanner.Ready(from);
             FusionCoopMod.Log.Msg($"[level] P{from + 1} ready");
             Session.SendToClients(BuildReady());
             TryStartIfAllReady();
@@ -592,8 +596,15 @@ namespace FusionCoop.Coop
                     break;
                 }
                 case Msg.ReadyState:
-                    _readyMask = r.ReadByte();
+                {
+                    byte mask = r.ReadByte();
+                    // players who just got ready, in id order (they come one at a time anyway)
+                    int fresh = mask & ~_readyMask;
+                    for (byte id = 0; id < 8; id++)
+                        if ((fresh & (1 << id)) != 0) Ui.ReadyBanner.Ready(id);
+                    _readyMask = mask;
                     break;
+                }
                 case Msg.BattleStart:
                     _hostStarted = true;
                     if (!_clientOnLevel) break;
