@@ -140,6 +140,7 @@ namespace FusionCoop
                 typeof(Coop.ZombieSync.AttackUpdatePatch),
                 typeof(Coop.ZombieSync.NewZombieUpdatePatch),
                 typeof(Coop.ZombieSync.LevelProgressPatch),
+                typeof(Coop.LevelSync.NoTutorialPatch),
                 typeof(Coop.PlantSync.PlantDiePatch),
                 typeof(Coop.PlantSync.PresentRandomPatch),
                 typeof(Coop.PlantSync.PresentSuperRandomPatch),
