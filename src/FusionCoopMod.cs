@@ -4,7 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.13.1", "Crispy DoDo Bird")]
+[assembly: MelonInfo(typeof(FusionCoop.FusionCoopMod), "FusionCoop", "0.14.0", "Crispy DoDo Bird")]
 [assembly: MelonGame(null, "PlantsVsZombiesRH")]
 [assembly: HarmonyDontPatchAll]
 
@@ -78,16 +78,16 @@ namespace FusionCoop
 
             var cat = MelonPreferences.CreateCategory("FusionCoop");
             _name = cat.CreateEntry("PlayerName", Environment.UserName, "Name shown to other players");
-            _lastIp = cat.CreateEntry("LastIp", "127.0.0.1", "Host IP to join (Radmin VPN address, e.g. 26.x.x.x)");
+            _lastIp = cat.CreateEntry("LastIp", "", "Host IP to join (Radmin VPN address, e.g. 26.x.x.x)");
             _port = cat.CreateEntry("Port", Protocol.DefaultPort, "TCP port");
-            _probes = cat.CreateEntry("ProbeLog", true, "Log game calls (plant/sun/shovel) for research");
+            _probes = cat.CreateEntry("ProbeLog", false, "Research: log game calls (plant/sun/shovel)");
             _autoStart = cat.CreateEntry("AutoStart", "", "Testing: 'host' or 'join' starts the session automatically");
             _autoLevel = cat.CreateEntry("AutoLevel", 0, "Testing: host enters this Adventure level once a client joins and starts it; clients auto-ready (0 = off)");
             _sweep = cat.CreateEntry("Sweep", "", "Testing: Challenge levels the host plays through, e.g. '1-20' (both windows log [sweep] lines; empty = off)");
             _sweepSeconds = cat.CreateEntry("SweepSeconds", 45, "Testing: seconds per level in the sweep");
             Coop.LevelSweep.Parse(_sweep.Value);
             Coop.LevelSweep.Seconds = _sweepSeconds.Value;
-            _testTools = cat.CreateEntry("TestTools", true, "Testing: F5/F6 pick a zombie, 9 (host) spawns it in the lane under the cursor, F4 +1000 sun");
+            _testTools = cat.CreateEntry("TestTools", false, "Testing: F5/F6 pick a zombie, 9 (host) spawns it in the lane under the cursor, F4 +1000 sun");
             Coop.TestTools.Enabled = _testTools.Value;
             UiDump.Enabled = cat.CreateEntry("UiDump", false, "Research: write the game's UI to UserData/ui_dump.txt once the main menu is up").Value;
             _ownerTags = cat.CreateEntry("OwnerTags", false, "Show P1/P2 tags under the plants players placed (Tab window)");

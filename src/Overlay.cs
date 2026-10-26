@@ -137,7 +137,7 @@ namespace FusionCoop
                 Text(new Rect(x + 12, ty, w - 24, line + 4), t, c);
                 ty += line;
             }
-            Row("FusionCoop 0.13.1", HeadColor);
+            Row("FusionCoop 0.14.0", HeadColor);
             Row($"status: {Session.Status}", TextColor);
             Row($"role: {role}    ping: {rtt}", TextColor);
             Row($"players: {players}", TextColor);
