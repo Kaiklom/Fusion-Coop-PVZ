@@ -10,7 +10,7 @@ A [MelonLoader](https://github.com/LavaGang/MelonLoader) mod.
 
 ## Status
 
-- Tested with **2 players on two PCs** over Radmin VPN. Up to 4 players are supported but not tested yet.
+- Tested with **2 players on two PCs** over Radmin VPN. Up to 4 players are supported
 - Game version **4.0.5 only**. Every player needs the same FusionCoop version (the game tells you if not).
 
 | Mode | Co-op |
@@ -97,7 +97,7 @@ See [LICENSE](LICENSE).
 
 ### สถานะ
 
-- ทดสอบแล้วกับ **ผู้เล่น 2 คน สองเครื่อง** ผ่าน Radmin VPN รองรับสูงสุด 4 คนแต่ยังไม่ได้ทดสอบ
+- ทดสอบแล้วกับ **ผู้เล่น 2 คน สองเครื่อง** ผ่าน Radmin VPN รองรับสูงสุด 4 คน
 - ใช้กับเกม **4.0.5 เท่านั้น** ทุกคนต้องใช้ FusionCoop เวอร์ชันเดียวกัน (ถ้าไม่ตรงเกมจะแจ้ง)
 
 | โหมด | co-op |
