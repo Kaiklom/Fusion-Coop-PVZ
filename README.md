@@ -44,8 +44,12 @@ In a room:
 
 - The host picks the level; everyone else follows. Everyone chooses their own cards; the battle starts when all
   players are ready (the host can force it).
-- **Tab** opens the players window: who is ready, ping, *Kick* (host), plant owner tags (P1 / P2 under each
-  plant, three looks), *Force start*, *Leave room*.
+- **Tab** opens the players window: who is ready, ping, *Kick* (host), *Show plant owners*, *Tag style*,
+  *Force start*, *Leave room*.
+- Plant owner tags: P1 / P2 in the bottom-right corner of each planted cell (stone, gold or text only). With
+  *Show plant owners* off, only the cell under the mouse shows its tag.
+- **Right-click** a cell with nothing in hand to ping it: *Plant here*, *Look here*, *Dig up* or *Danger*
+  (*Cancel* in the middle). Everyone sees it on that cell for 3 seconds.
 - Every player has their own sun. Dropped items and cards appear on each player's own screen.
 - The host's game decides what happens (zombies, damage, wins); other windows follow it.
 - Only the host can pause, restart, or change the game speed and difficulty; the other players' pause menus
@@ -129,8 +133,12 @@ See [LICENSE](LICENSE).
 ระหว่างอยู่ในห้อง:
 
 - host เลือกด่าน คนอื่นเข้าตามเอง ทุกคนเลือกการ์ดของตัวเอง เกมเริ่มเมื่อทุกคนพร้อม (host บังคับเริ่มได้)
-- **Tab** เปิดหน้าต่างผู้เล่น: ใครพร้อมแล้ว, ping, *Kick* (host), ป้ายเจ้าของพืช (P1 / P2 ใต้ต้น มี 3 แบบ),
+- **Tab** เปิดหน้าต่างผู้เล่น: ใครพร้อมแล้ว, ping, *Kick* (host), *Show plant owners*, *Tag style*,
   *Force start*, *Leave room*
+- ป้ายเจ้าของพืช: P1 / P2 ที่มุมขวาล่างของช่องที่มีพืช (แบบหิน ทอง หรือตัวหนังสือ) ถ้าปิด *Show plant owners*
+  จะขึ้นเฉพาะช่องที่เอาเมาส์ชี้
+- **คลิกขวา** ที่ช่องตอนมือว่างเพื่อ ping บอกเพื่อน: *Plant here*, *Look here*, *Dig up* หรือ *Danger*
+  (*Cancel* ตรงกลาง) ทุกคนจะเห็นที่ช่องนั้น 3 วินาที
 - sun เป็นของใครของมัน ของดรอปและการ์ดดรอปขึ้นบนจอของแต่ละคน
 - เกมของ host เป็นตัวตัดสินผล (ซอมบี้ ความเสียหาย ชนะ/แพ้) จออื่นแสดงตาม
 - host เท่านั้นที่ pause, restart, ปรับความเร็วเกม และปรับความยากได้ หน้า Pause ของคนอื่นจะแสดงค่าของ host
