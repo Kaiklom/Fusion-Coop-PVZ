@@ -152,6 +152,8 @@ namespace FusionCoop.Net
         // host -> clients: (ushort n, n x (sbyte col, sbyte row, int plantType, int status, int animHash, float animTime, float countdown))
         // every chomper's state, twice a second; clients fix ones that stay different (ZombieSync.Chomper)
         ChomperState = 87,
+        // client -> host -> clients: (byte from, byte kind, sbyte col, sbyte row) a player pinged a lawn cell (Ui.Pings)
+        CellPing = 88,
     }
 
     internal static class Protocol

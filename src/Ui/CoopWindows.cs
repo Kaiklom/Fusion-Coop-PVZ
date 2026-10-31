@@ -90,6 +90,7 @@ namespace FusionCoop.Ui
             TestStep(inLevel);
             Coop.PlantSync.PruneOwners();
             OwnerBadges.Update();
+            Pings.Update();
             ReadyBanner.Update();
             PlayerTag.Update();
             if (_room != null) RefreshRoom();
@@ -308,6 +309,7 @@ namespace FusionCoop.Ui
             "Main menu leaves the level but not the room; Rejoin brings you back.",
             "Puzzle (I, Zombie) and some challenges are single player only.",
             "In a level, Tab shows players, ping and plant owner tags.",
+            "Right-click a cell with nothing in hand to ping it for everyone.",
         };
 
         private static GameObject _rulesWindow;

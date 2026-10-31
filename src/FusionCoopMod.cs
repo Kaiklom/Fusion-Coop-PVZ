@@ -111,6 +111,7 @@ namespace FusionCoop
             Coop.MultiChoiceSync.Init();
             Coop.MixBombSync.Init();
             Ui.CoopWindows.Init();
+            Ui.Pings.Init();
             Coop.MagnetarSync.Init();
             PatchAll(new[]
             {
