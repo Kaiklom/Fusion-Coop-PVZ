@@ -70,6 +70,7 @@ namespace FusionCoop.Coop
             _hostWave = -1;
             _hugeShownForNext = false;
             _allowWaveStep = false;
+            ResetChompers();
         }
 
         private static bool IsPuppet(Zombie z) => IsClient && z != null && Puppets.ContainsKey(z.GetInstanceID());
@@ -84,12 +85,17 @@ namespace FusionCoop.Coop
             HostIds[z.GetInstanceID()] = id;
         }
 
+        // Client: only zombies the host has (Spawn, Jackson's dancers) are made, under their network id.
+        // A replayed hit or death can run game code that summons the next zombie itself (a DollZombie's
+        // box falls: diamond -> gold -> silver -> plain); that one comes from the host's list instead.
+        private static bool ClientMaySpawn => Replaying && !_killing && _spawningId != 0;
+
         [HarmonyPatch(typeof(CreateZombie), nameof(CreateZombie.SetZombie))]
         internal static class SetZombiePatch
         {
             private static bool Prefix(ref Zombie __result)
             {
-                if (IsClient && (!Replaying || _killing))
+                if (IsClient && !ClientMaySpawn)
                 {
                     __result = null;
                     return false;
@@ -110,7 +116,7 @@ namespace FusionCoop.Coop
         {
             private static bool Prefix(ref Zombie __result)
             {
-                if (IsClient && (!Replaying || _killing))
+                if (IsClient && !ClientMaySpawn)
                 {
                     __result = null;
                     return false;
@@ -186,11 +192,17 @@ namespace FusionCoop.Coop
         [HarmonyPatch(typeof(Zombie), nameof(Zombie.Die))]
         internal static class DiePatch
         {
-            private static bool Prefix() => !(IsClient && !Replaying && Board.Instance != null);
+            private static bool Prefix(Zombie __instance) =>
+                !(IsClient && !Replaying && Board.Instance != null) || BiteMayKill(__instance);
 
             // Host: tell clients right away instead of waiting for the next state message.
             private static void Postfix(Zombie __instance, int reason)
             {
+                if (IsClient && BiteMayKill(__instance))
+                {
+                    BiteKilled(__instance);
+                    return;
+                }
                 if (Session.Role != Role.Host || !Session.Ready || __instance == null) return;
                 if (!HostIds.TryGetValue(__instance.GetInstanceID(), out uint id)) return;
                 // Dying from a magnet pull (iron zombies) or a fire: sent with that event instead.
@@ -496,11 +508,16 @@ namespace FusionCoop.Coop
 
         internal static void Update()
         {
-            if (Session.Role == Role.Host) HostUpdate();
+            if (Session.Role == Role.Host)
+            {
+                HostUpdate();
+                SendChomperStates();
+            }
             else if (IsClient)
             {
                 ClientSmooth();
                 CheckWaveStep();
+                CheckWaitingBites();
                 if (Board.Instance != null && _hostWave >= 0 && !_allowWaveStep) EnsureWaveUi(Board.Instance);
             }
             if (Session.Ready && Board.Instance != null && Session.Now >= _nextReport)
@@ -824,7 +841,12 @@ namespace FusionCoop.Coop
         {
             if (rz.Killed || rz.Zombie == null) return;
             rz.Killed = true;
-            var z = rz.Zombie;
+            if (rz.Zombie.theStatus != ZombieStatus.Dying && WaitForBite(rz, reason)) return;
+            KillNow(rz.Zombie, reason);
+        }
+
+        private static void KillNow(Zombie z, int reason)
+        {
             Puppets.Remove(z.GetInstanceID());
             if (z.theStatus == ZombieStatus.Dying) return; // already dying locally (magnet pull, fire)
             // Zombies a death lets out (a MachineNut's imps, ...) arrive from the host if its zombie let them out:

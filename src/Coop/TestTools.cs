@@ -15,6 +15,7 @@ namespace FusionCoop.Coop
 
         private static readonly (ZombieType type, string name)[] Zombies =
         {
+            (ZombieType.DollDiamond, "Diamond box (-> gold -> silver -> plain)"),
             (ZombieType.Gargantuar, "Gargantuar"),
             (ZombieType.RedGargantuar, "Red Gargantuar"),
             (ZombieType.IronGargantuar, "Iron Gargantuar"),

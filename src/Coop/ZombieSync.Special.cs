@@ -450,6 +450,12 @@ namespace FusionCoop.Coop
                 case Msg.ZombieBite:
                     ReplayBite(pkt);
                     return true;
+                case Msg.ChomperBite:
+                    ReplayChomperBite(pkt);
+                    return true;
+                case Msg.ChomperState:
+                    ReplayChomperState(pkt);
+                    return true;
                 case Msg.ZombieGarlic:
                     ReplayGarlic(pkt);
                     return true;

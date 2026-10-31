@@ -146,11 +146,17 @@ namespace FusionCoop.Net
         GiftboxSun = 84,
         // host -> clients: (string json) the host's Magnetar modules that change the game (MagnetarSync)
         MagnetarState = 85,
+        // host -> clients: (sbyte col, sbyte row, int plantType, int animBefore, uint zombieId, int status, byte n, n x string trigger)
+        // that chomper started biting that zombie (ZombieSync.Chomper)
+        ChomperBite = 86,
+        // host -> clients: (ushort n, n x (sbyte col, sbyte row, int plantType, int status, int animHash, float animTime, float countdown))
+        // every chomper's state, twice a second; clients fix ones that stay different (ZombieSync.Chomper)
+        ChomperState = 87,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 38;
+        internal const int Version = 39;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
