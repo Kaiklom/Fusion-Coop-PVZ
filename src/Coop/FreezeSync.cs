@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FusionCoop.Net;
 using HarmonyLib;
 using Il2Cpp;
@@ -15,9 +16,14 @@ namespace FusionCoop.Coop
     // a still picture.
     // - Host: each freeze is sent before it happens (cell, plant type, fire), and each broken block.
     // - Client: its own freezes are blocked and its blocks take no damage; it freezes and breaks the host's.
+    // - Ice blocks a level starts with (Board.SetFreezedPlant, snow level strategies and event nodes) are put
+    //   at random cells with random plants in each window: clients make none themselves; the host sends its
+    //   blocks every second (cell, plant type) and clients match them, as with graves (GraveSync).
     internal static class FreezeSync
     {
         private static bool _replaying;
+        private static double _nextState;
+        private static readonly Dictionary<(int, int), int> ExtraSeen = new(); // client: cell -> states it was extra in
 
         internal static void Init()
         {
@@ -65,6 +71,93 @@ namespace FusionCoop.Coop
             }
         }
 
+        // Clients make ice blocks only for the host's (replays and IceState).
+        [HarmonyPatch(typeof(GridItem), nameof(GridItem.SetGridItem))]
+        internal static class SetIceBlockPatch
+        {
+            private static bool Prefix(GridItemType theType) =>
+                theType != GridItemType.IceBlock || !(Session.Role == Role.Client && Session.Ready && !_replaying);
+        }
+
+        // ---------- the host's ice blocks ----------
+
+        internal static void Update()
+        {
+            if (!IsHost || Board.Instance == null || Session.Now < _nextState) return;
+            _nextState = Session.Now + 1;
+            var blocks = Blocks();
+            Session.SendToClients(Protocol.Build(Msg.IceState, w =>
+            {
+                w.Write((ushort)blocks.Count);
+                foreach (var b in blocks)
+                {
+                    w.Write((sbyte)b.theItemColumn);
+                    w.Write((sbyte)b.theItemRow);
+                    w.Write((int)b.thePlantType);
+                }
+            }));
+        }
+
+        private static List<FreezedPlant> Blocks()
+        {
+            var list = new List<FreezedPlant>();
+            var items = Board.Instance != null ? Board.Instance.griditemArray : null;
+            if (items == null) return list;
+            foreach (var item in items)
+            {
+                if (item == null || item.theItemType != GridItemType.IceBlock) continue;
+                var b = item.TryCast<FreezedPlant>();
+                if (b != null && b.health > 0) list.Add(b);
+            }
+            return list;
+        }
+
+        private static FreezedPlant BlockAt(int col, int row)
+        {
+            foreach (var b in Blocks())
+                if (b.theItemColumn == col && b.theItemRow == row) return b;
+            return null;
+        }
+
+        private static void ApplyState(System.IO.BinaryReader r)
+        {
+            int count = r.ReadUInt16();
+            var want = new HashSet<(int, int)>();
+            for (int i = 0; i < count; i++)
+            {
+                int col = r.ReadSByte(), row = r.ReadSByte();
+                var type = (PlantType)r.ReadInt32();
+                want.Add((col, row));
+                if (BlockAt(col, row) != null) continue;
+                FreezedPlant made = null;
+                Replay(() =>
+                {
+                    var item = GridItem.SetGridItem(col, row, GridItemType.IceBlock, default);
+                    made = item != null ? item.TryCast<FreezedPlant>() : null;
+                    if (made != null) made.InitFreezedPlant(type);
+                });
+                FusionCoopMod.Log.Msg($"[freeze] host's ice block ({type}) c{col} r{row} -> {(made != null ? "made" : "FAILED")}");
+            }
+            // Blocks the host doesn't have (two states in a row, so a break on its way lands first) go quietly:
+            // breaking them would let a plant out.
+            var board = Board.Instance;
+            foreach (var b in Blocks())
+            {
+                var cell = (b.theItemColumn, b.theItemRow);
+                if (want.Contains(cell))
+                {
+                    ExtraSeen.Remove(cell);
+                    continue;
+                }
+                ExtraSeen[cell] = ExtraSeen.TryGetValue(cell, out var n) ? n + 1 : 1;
+                if (ExtraSeen[cell] < 2) continue;
+                ExtraSeen.Remove(cell);
+                FusionCoopMod.Log.Msg($"[freeze] ice block c{cell.Item1} r{cell.Item2} the host doesn't have: removed");
+                board.griditemArray.Remove(b);
+                Object.Destroy(b.gameObject);
+            }
+        }
+
         [HarmonyPatch(typeof(FreezedPlant), nameof(FreezedPlant.TakeDamage))]
         internal static class IceDamagePatch
         {
@@ -89,9 +182,14 @@ namespace FusionCoop.Coop
 
         private static void OnClientMessage(Packet pkt)
         {
-            if (pkt.Type != Msg.PlantFrozen && pkt.Type != Msg.IceBroken) return;
+            if (pkt.Type != Msg.PlantFrozen && pkt.Type != Msg.IceBroken && pkt.Type != Msg.IceState) return;
             if (Board.Instance == null) return;
             var r = pkt.Reader();
+            if (pkt.Type == Msg.IceState)
+            {
+                ApplyState(r);
+                return;
+            }
             int col = r.ReadSByte(), row = r.ReadSByte();
             if (pkt.Type == Msg.PlantFrozen)
             {

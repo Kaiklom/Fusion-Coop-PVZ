@@ -24,7 +24,14 @@ namespace FusionCoop.Ui
                 Hide();
                 return;
             }
-            if (_shown != null && _shownId == Session.LocalId) return;
+            if (_shown != null && _shownId == Session.LocalId)
+            {
+                // An Odyssey round's card chooser opens over the tag made in the round before: keep it on top
+                // while choosing cards.
+                if (Coop.LevelSync.Choosing && _shown.transform.GetSiblingIndex() != _shown.transform.parent.childCount - 1)
+                    _shown.transform.SetAsLastSibling();
+                return;
+            }
             if (Time.realtimeSinceStartup < _nextTry) return;
             _nextTry = Time.realtimeSinceStartup + 1;
             Hide();

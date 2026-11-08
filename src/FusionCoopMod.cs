@@ -230,7 +230,9 @@ namespace FusionCoop
                 typeof(Coop.MultiChoiceSync.UpdateWindowPatch),
                 typeof(Coop.MixBombSync.AttributePatch),
                 typeof(Coop.MixBombSync.DropPatch),
+                typeof(Coop.MixBombSync.ImitaterPatch),
                 typeof(Coop.FreezeSync.FreezePatch),
+                typeof(Coop.FreezeSync.SetIceBlockPatch),
                 typeof(Coop.FreezeSync.IceDamagePatch),
                 typeof(Coop.FreezeSync.IceBrokenPatch),
             });
@@ -289,6 +291,7 @@ namespace FusionCoop
             Coop.ZombieSync.Update();
             Coop.PlantSync.Update();
             Coop.GraveSync.Update();
+            Coop.FreezeSync.Update();
         }
 
         // Testing: host enters level AutoLevel 3 s after a client joins, forces the start 25 s later.
