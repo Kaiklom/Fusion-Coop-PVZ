@@ -52,6 +52,31 @@ namespace FusionCoop.Coop
             }
         }
 
+        // A plant at (col,row) for a host message about it. A drone that follows a Commando has left the lawn
+        // grid, so it is found through the Commandos' wingmen instead (the nearest of that type).
+        internal static Plant FindShooter(int col, int row, PlantType type)
+        {
+            var p = PlantSync.FindPlant(col, row, type);
+            if (p != null && p.thePlantType == type) return p;
+            var list = Board.Instance != null && Board.Instance.boardEntity != null ? Board.Instance.boardEntity.plantArray : null;
+            if (list == null) return null;
+            Plant best = null;
+            int bestDist = int.MaxValue;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var commando = list[i] != null ? list[i].TryCast<SuperSnowGatling>() : null;
+                var drone = commando != null ? commando.followed : null;
+                if (drone == null || drone.thePlantType != type) continue;
+                int d = System.Math.Abs(drone.thePlantColumn - col) + System.Math.Abs(drone.thePlantRow - row);
+                if (d < bestDist)
+                {
+                    best = drone;
+                    bestDist = d;
+                }
+            }
+            return best;
+        }
+
         private static void OnClientMessage(Packet pkt)
         {
             if (pkt.Type != Msg.DroneAttach || Board.Instance == null) return;

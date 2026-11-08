@@ -151,7 +151,7 @@ namespace FusionCoop.Coop
             var type = (PlantType)r.ReadInt32();
             byte kind = r.ReadByte();
             string name = r.ReadString();
-            var p = PlantSync.FindPlant(col, row, type);
+            var p = DroneSync.FindShooter(col, row, type); // drones following a Commando are off the grid
             if (p == null || p.thePlantType != type || p.anim == null || name.Length == 0) return;
             if (kind != KindTrigger)
             {

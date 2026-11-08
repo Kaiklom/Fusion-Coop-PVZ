@@ -167,11 +167,15 @@ namespace FusionCoop.Net
         // host -> clients: (sbyte col, sbyte row, int plantType, sbyte targetCol, sbyte targetRow, int targetType)
         // a Drone Commando picked the Commando it follows (DroneSync)
         DroneAttach = 92,
+        // host -> clients: (sbyte col, sbyte row, int plantType, byte kind[0 SuperShoot, 1 Melancholy, 2 Tri-phoon,
+        // 3 Flurry], float arg)
+        // a Commando started its ultimate (CommandoSync)
+        CommandoUltimate = 93,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 44;
+        internal const int Version = 45;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
