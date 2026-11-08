@@ -156,11 +156,16 @@ namespace FusionCoop.Net
         ChomperState = 87,
         // client -> host -> clients: (byte from, byte kind, sbyte col, sbyte row) a player pinged a lawn cell (Ui.Pings)
         CellPing = 88,
+        // host -> clients: (sbyte col, sbyte row, int plantType, bool fire) the host froze that plant into an ice
+        // block (FreezeSync)
+        PlantFrozen = 89,
+        // host -> clients: (sbyte col, sbyte row) the host's ice block in that cell broke (FreezeSync)
+        IceBroken = 90,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 40;
+        internal const int Version = 41;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

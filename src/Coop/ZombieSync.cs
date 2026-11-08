@@ -605,6 +605,7 @@ namespace FusionCoop.Coop
         // ---------- client: reconcile ----------
 
         private static readonly HashSet<uint> Seen = new();
+        private static readonly HashSet<uint> SpawnFailed = new();
         private static readonly List<uint> Stale = new();
 
         private static void OnClientMessage(Packet pkt)
@@ -667,7 +668,12 @@ namespace FusionCoop.Coop
                 {
                     if (dying) continue; // don't spawn something that is already dying
                     var z = Spawn(cz, id, row, type, x, (flags & FlagMind) != 0);
-                    if (z == null) continue;
+                    if (z == null)
+                    {
+                        // retried with every state message: noted once per zombie
+                        if (SpawnFailed.Add(id)) FusionCoopMod.Log.Warning($"[zombie] could not make the host's {type} #{id} (row {row})");
+                        continue;
+                    }
                     rz = new Remote { Zombie = z };
                     ClientZombies[id] = rz;
                     Puppets[z.GetInstanceID()] = id;

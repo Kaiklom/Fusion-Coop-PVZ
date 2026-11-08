@@ -39,6 +39,8 @@ namespace FusionCoop.Coop
         private static Plant _captured;
         // Set while we replay a remote action, so nothing is re-sent.
         internal static bool Replaying;
+        // Host: above 0 while plants leave the board in a way clients replay by itself (FreezeSync).
+        internal static int SuppressDeaths;
 
         internal static void BeginCapture()
         {
@@ -75,6 +77,29 @@ namespace FusionCoop.Coop
                 any ??= p;
             }
             return any;
+        }
+
+        private static bool IsWalker(Plant p) => p != null && p.TryCast<Plantwalker>() != null;
+
+        // The walking plant of that type in that row nearest to the column.
+        private static Plant FindWalker(int row, PlantType type, int col)
+        {
+            var list = Board.Instance != null && Board.Instance.boardEntity != null ? Board.Instance.boardEntity.plantArray : null;
+            if (list == null) return null;
+            Plant best = null;
+            int bestDist = int.MaxValue;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var p = list[i];
+                if (p == null || p.thePlantType != type || p.thePlantRow != row || !IsWalker(p)) continue;
+                int d = System.Math.Abs(p.thePlantColumn - col);
+                if (d < bestDist)
+                {
+                    best = p;
+                    bestDist = d;
+                }
+            }
+            return best;
         }
 
         // Client: drop presents left in a cell (their opening is the host's).
@@ -332,6 +357,7 @@ namespace FusionCoop.Coop
                 Mismatch.Clear();
                 Touched.Clear();
                 FixedAt.Clear();
+                WalkerMismatch.Clear();
                 _battleSince = 0;
                 CarryOwners.Clear();
                 if (Session.Role == Role.Host && bid != 0)
@@ -514,12 +540,21 @@ namespace FusionCoop.Coop
             if (list == null) return;
 
             Cells.Clear();
-            foreach (var h in HostPlants) CellAt(h.Col, h.Row).Host.Add(h);
+            LocalWalkers.Clear();
             for (int i = 0; i < list.Count; i++)
             {
                 var p = list[i];
-                if (p != null) CellAt(p.thePlantColumn, p.thePlantRow).Local.Add(p);
+                if (p == null) continue;
+                if (IsWalker(p))
+                {
+                    WalkerTypes.Add(p.thePlantType);
+                    LocalWalkers.Add(p);
+                }
+                else CellAt(p.thePlantColumn, p.thePlantRow).Local.Add(p);
             }
+            foreach (var h in HostPlants)
+                if (!WalkerTypes.Contains(h.Type)) CellAt(h.Col, h.Row).Host.Add(h);
+            ReconcileWalkers(now);
             var waiting = new HashSet<int>();
             foreach (var pr in PendingRequests.Values) waiting.Add(CellKey(pr.Col, pr.Row));
 
@@ -552,6 +587,70 @@ namespace FusionCoop.Coop
             foreach (var key in Mismatch.Keys)
                 if (!Cells.ContainsKey(key)) Dead.Add(key);
             foreach (var key in Dead) Mismatch.Remove(key);
+        }
+
+        // Walking plants change cells as they go, so they are compared per row and type instead: one the host no
+        // longer has (it used itself up) and still walking here after a while is removed.
+        private const double WalkerDelay = 2.0;
+        private static readonly HashSet<PlantType> WalkerTypes = new();
+        private static readonly List<Plant> LocalWalkers = new();
+        private static readonly Dictionary<long, double> WalkerMismatch = new(); // (row, type) -> since when
+
+        private static void ReconcileWalkers(double now)
+        {
+            if (LocalWalkers.Count == 0)
+            {
+                WalkerMismatch.Clear();
+                return;
+            }
+            var groups = new Dictionary<long, List<Plant>>();
+            foreach (var p in LocalWalkers)
+            {
+                long key = PlantKey(0, p.thePlantRow, p.thePlantType);
+                if (!groups.TryGetValue(key, out var g)) groups[key] = g = new List<Plant>();
+                g.Add(p);
+            }
+            foreach (var kv in groups)
+            {
+                var first = kv.Value[0];
+                int row = first.thePlantRow;
+                var type = first.thePlantType;
+                var hostCols = new List<int>();
+                foreach (var h in HostPlants)
+                    if (h.Row == row && h.Type == type) hostCols.Add(h.Col);
+                int extra = kv.Value.Count - hostCols.Count;
+                if (extra <= 0)
+                {
+                    WalkerMismatch.Remove(kv.Key);
+                    continue;
+                }
+                if (!WalkerMismatch.TryGetValue(kv.Key, out var since))
+                {
+                    WalkerMismatch[kv.Key] = now;
+                    continue;
+                }
+                if (now - since < WalkerDelay) continue;
+                WalkerMismatch.Remove(kv.Key);
+                // the ones farthest from any of the host's are extra
+                kv.Value.Sort((a, b) => Dist(b, hostCols).CompareTo(Dist(a, hostCols)));
+                for (int i = 0; i < extra; i++)
+                {
+                    var p = kv.Value[i];
+                    Owners.Remove(p.GetInstanceID());
+                    Replaying = true;
+                    try { p.Die(Plant.DieReason.Default); }
+                    catch (System.Exception e) { FusionCoopMod.Log.Warning($"[plant] fix: removing walker {type} failed: {e.Message}"); }
+                    finally { Replaying = false; }
+                }
+                FusionCoopMod.Log.Msg($"[plant] fixed row {row}: removed {extra} walking {type} the host no longer has");
+            }
+        }
+
+        private static int Dist(Plant p, List<int> cols)
+        {
+            int best = int.MaxValue;
+            foreach (int c in cols) best = System.Math.Min(best, System.Math.Abs(p.thePlantColumn - c));
+            return best;
         }
 
         // Same plant types (with counts) and owners in the cell on both boards.
@@ -712,6 +811,9 @@ namespace FusionCoop.Coop
 
         private static void OnClientMessage(Packet pkt)
         {
+            // Plant messages need our board (the host may be building one while we are still in a menu).
+            if (Board.Instance == null && (pkt.Type == Msg.PlantDone || pkt.Type == Msg.PlantSpawned ||
+                pkt.Type == Msg.PlantState || pkt.Type == Msg.PlantDied || pkt.Type == Msg.PlantSnapshot)) return;
             var r = pkt.Reader();
             switch (pkt.Type)
             {
@@ -775,6 +877,8 @@ namespace FusionCoop.Coop
                     var type = (PlantType)r.ReadInt32();
                     var reason = (Plant.DieReason)r.ReadInt32();
                     var plant = FindPlant(col, row, type);
+                    // Walking plants (Tumble lichen, ...) move by themselves: ours may be a cell or two away.
+                    if (plant == null || plant.thePlantType != type) plant = FindWalker(row, type, col);
                     // Exact type only: after a fusion the cell holds a different plant that must live.
                     if (plant == null || plant.thePlantType != type) break;
                     Owners.Remove(plant.GetInstanceID());
@@ -878,7 +982,7 @@ namespace FusionCoop.Coop
                 if (ClientGuard && ZombieCaused(reason)) return false;
                 if (Session.Role == Role.Client && __instance != null) Touch(__instance.thePlantColumn, __instance.thePlantRow);
                 if (Session.Role != Role.Host || !Session.Ready || Replaying || __instance == null) return true;
-                if (!SendsDeath(reason) || Board.Instance == null) return true;
+                if (!SendsDeath(reason) || Board.Instance == null || SuppressDeaths > 0) return true;
                 int col = __instance.thePlantColumn, row = __instance.thePlantRow;
                 var type = __instance.thePlantType;
                 Session.SendToClients(Protocol.Build(Msg.PlantDied, w =>
