@@ -223,6 +223,10 @@ namespace FusionCoop.Coop
             FusionCoopMod.Log.Msg("[test] auto ready");
         }
 
+        // Host: our battle is running. Client: we are in the host's level and the host's battle is running.
+        internal static bool HostBattle => IsHost && _onLevel && _battleStarted;
+        internal static bool ClientInHostBattle => IsClient && _clientOnLevel && _hostStarted;
+
         // Client in the room but not in the host's level.
         internal static bool CanRejoin => IsClient && _hostLevelActive && !_clientOnLevel;
 
@@ -313,6 +317,7 @@ namespace FusionCoop.Coop
         // opens the card chooser again: every window waits for everyone's start button again, as on entry.
         internal static void NewRound()
         {
+            PlantSync.EndRoundBuild();
             if (IsHost && _onLevel)
             {
                 _battleStarted = false;

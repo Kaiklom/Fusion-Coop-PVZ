@@ -174,6 +174,7 @@ namespace FusionCoop
                 typeof(Coop.PlantSync.ClientPlantDamagePatch),
                 typeof(Coop.PlantSync.ClientPlantCrashedPatch),
                 typeof(Coop.PlantAttackSync.ShootUpdatePatch),
+                typeof(Coop.PlantAttackSync.BigGatlingEnergyPatch),
                 typeof(Coop.PlantAttackSync.SetTriggerPatch),
                 typeof(Coop.PlantAttackSync.SetBoolPatch),
                 typeof(Coop.MowerSync.TriggerPatch),

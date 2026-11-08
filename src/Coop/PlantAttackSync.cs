@@ -81,6 +81,28 @@ namespace FusionCoop.Coop
             }
         }
 
+        // The Apeacalypse minigun charges energy from the damage it takes (GetEnergy, from its health event);
+        // full energy starts its big shot there ("bigShoot" trigger, "shooting" off), outside PlantShootUpdate.
+        // The host's energy decides: clients skip their own (attributeCount comes with PlantState) and play
+        // the host's big shot like any other attack.
+        [HarmonyPatch(typeof(UltimateBigGatling), nameof(UltimateBigGatling.GetEnergy))]
+        internal static class BigGatlingEnergyPatch
+        {
+            private static bool Prefix(Plant __instance, out Plant __state)
+            {
+                __state = _shooter;
+                if (ClientBattle) return false;
+                if (Session.Role == Role.Host && Session.Ready) _shooter = __instance;
+                return true;
+            }
+
+            private static System.Exception Finalizer(System.Exception __exception, Plant __state)
+            {
+                _shooter = __state;
+                return __exception;
+            }
+        }
+
         [HarmonyPatch(typeof(Animator), nameof(Animator.SetTrigger), typeof(string))]
         internal static class SetTriggerPatch
         {

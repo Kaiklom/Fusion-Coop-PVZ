@@ -28,6 +28,7 @@ namespace FusionCoop.Coop
         {
             internal Plant Plant;
             internal int SunPaid;
+            internal int Col, Row;
         }
 
         private static readonly Dictionary<uint, Pending> PendingRequests = new();
@@ -165,6 +166,14 @@ namespace FusionCoop.Coop
         private static bool BattleRunning =>
             Board.Instance != null && (InitBoard.Instance == null || InitBoard.Instance.ready);
 
+        // Odyssey: from Board.TravelNextRound until the next round's board is up (LevelSync.NewRound). Each
+        // window builds that board from its own save with SetPlant (lily pads, pots, the plants on them), so a
+        // client must not block those, and the host doesn't send them as plants made during battle.
+        private static double _roundBuildUntil;
+        private static bool RoundBuilding => Session.Now < _roundBuildUntil;
+        internal static void BeginRoundBuild() => _roundBuildUntil = Session.Now + 10;
+        internal static void EndRoundBuild() => _roundBuildUntil = 0;
+
         // ---------- local planting ----------
 
         [HarmonyPatch(typeof(Mouse), "TryToSetPlantByCard")]
@@ -195,7 +204,7 @@ namespace FusionCoop.Coop
                 else
                 {
                     uint seq = _nextSeq++;
-                    PendingRequests[seq] = new Pending { Plant = plant, SunPaid = paid };
+                    PendingRequests[seq] = new Pending { Plant = plant, SunPaid = paid, Col = col, Row = row };
                     SetOwner(plant, Session.LocalId);
                     Session.SendToHost(Protocol.Build(Msg.PlantRequest, w =>
                     {
@@ -224,7 +233,7 @@ namespace FusionCoop.Coop
             {
                 _setPlantDepth++;
                 if (Session.Role != Role.Client || !Session.Ready || _capturing || Replaying) return true;
-                if (!BattleRunning) return true; // level setup before the battle stays local
+                if (!BattleRunning || RoundBuilding) return true; // level setup before the battle stays local
                 __result = null;
                 return false;
             }
@@ -232,13 +241,14 @@ namespace FusionCoop.Coop
             private static void Postfix(Plant __result, int newColumn, int newRow, PlantType theSeedType)
             {
                 if (__result == null) return;
+                if (Session.Role == Role.Client) Touch(newColumn, newRow);
                 if (_capturing)
                 {
                     _captured = __result;
                     return;
                 }
                 if (_setPlantDepth != 1) return;
-                if (Replaying || Session.Role != Role.Host || !Session.Ready || !BattleRunning) return;
+                if (Replaying || Session.Role != Role.Host || !Session.Ready || !BattleRunning || RoundBuilding) return;
                 int col = newColumn, row = newRow;
                 byte owner = CellOwner.TryGetValue(CellKey(col, row), out var o) ? o : (byte)255;
                 if (owner != 255) SetOwner(__result, owner);
@@ -296,21 +306,40 @@ namespace FusionCoop.Coop
             }
         }
 
-        // ---------- plant health ----------
+        // ---------- plant health and board check ----------
 
         private static double _nextHealthSend;
 
-        // Host, 5 Hz: health of every plant on the board.
+        // Host, 5 Hz: every plant on the board (cell, type, owner, health).
         private static int _boardId;
+
+        // Host: owners by (cell, type) on the current board. An Odyssey round builds a new board from the save,
+        // so its plants are new objects: they take the owner of the same plant on the old board.
+        private static readonly Dictionary<long, byte> LastOwners = new();
+        private static readonly Dictionary<long, byte> CarryOwners = new();
+        private static double _carryUntil;
+
+        private static long PlantKey(int col, int row, PlantType type) => ((long)CellKey(col, row) << 32) | (uint)(int)type;
 
         internal static void Update()
         {
-            // New board (level/restart): the cell owners of the old one no longer apply.
+            // New board (level/restart/Odyssey round): the cell owners of the old one no longer apply.
             int bid = Board.Instance != null ? Board.Instance.GetInstanceID() : 0;
             if (bid != _boardId)
             {
                 _boardId = bid;
                 CellOwner.Clear();
+                Mismatch.Clear();
+                Touched.Clear();
+                FixedAt.Clear();
+                _battleSince = 0;
+                CarryOwners.Clear();
+                if (Session.Role == Role.Host && bid != 0)
+                {
+                    foreach (var kv in LastOwners) CarryOwners[kv.Key] = kv.Value;
+                    _carryUntil = Session.Now + 15;
+                }
+                LastOwners.Clear();
             }
 
             if (Session.Role != Role.Host || !Session.Ready || Session.Names.Count < 2) return;
@@ -320,39 +349,77 @@ namespace FusionCoop.Coop
             var list = board.boardEntity.plantArray;
             if (list == null) return;
             var plants = new List<Plant>();
+            bool carrying = CarryOwners.Count > 0 && Session.Now < _carryUntil;
             for (int i = 0; i < list.Count; i++)
             {
                 var p = list[i];
-                if (p != null) plants.Add(p);
+                if (p == null) continue;
+                plants.Add(p);
+                if (carrying && OwnerOf(p) == 255 &&
+                    CarryOwners.Remove(PlantKey(p.thePlantColumn, p.thePlantRow, p.thePlantType), out var carried))
+                    SetOwner(p, carried);
             }
+            if (!carrying) CarryOwners.Clear();
+            LastOwners.Clear();
+            foreach (var p in plants)
+            {
+                byte o = OwnerOf(p);
+                if (o != 255) LastOwners[PlantKey(p.thePlantColumn, p.thePlantRow, p.thePlantType)] = o;
+            }
+            bool battle = LevelSync.HostBattle && BattleRunning;
             Session.SendToClients(Protocol.Build(Msg.PlantState, w =>
             {
+                w.Write(battle);
+                w.Write((int)GameAPP.theBoardType);
+                w.Write(GameAPP.theBoardLevel);
                 w.Write((ushort)plants.Count);
                 foreach (var p in plants)
                 {
                     w.Write((sbyte)p.thePlantColumn);
                     w.Write((sbyte)p.thePlantRow);
                     w.Write((int)p.thePlantType);
+                    w.Write(OwnerOf(p));
                     w.Write(p.thePlantHealth);
                     w.Write(p.thePlantMaxHealth);
                     w.Write(p.theShieldHealth);
+                    w.Write(p.attributeCount);
+                    w.Write(p.AttributeCountdown);
+                    w.Write(p.AttributeCountdownMaximum);
                 }
             }));
         }
 
+        private struct HostPlant
+        {
+            internal int Col, Row;
+            internal PlantType Type;
+            internal byte Owner;
+        }
+
+        private static readonly List<HostPlant> HostPlants = new();
+
         // Client: damage through the game's TakeDamage (hit flash, effects), copy the host's numbers, then
         // redraw the damage look. Wall-nut-like plants pick their bitten sprite from health/maxHealth in
         // ReplaceSprite, which their own TakeDamage calls but the base Plant.TakeDamage we reach does not.
+        // Then the board check (Reconcile).
         private static void ApplyPlantState(System.IO.BinaryReader r)
         {
+            bool hostBattle = r.ReadBoolean();
+            int boardType = r.ReadInt32(), boardLevel = r.ReadInt32();
             int count = r.ReadUInt16();
+            HostPlants.Clear();
             for (int i = 0; i < count; i++)
             {
                 int col = r.ReadSByte(), row = r.ReadSByte();
                 var type = (PlantType)r.ReadInt32();
+                byte owner = r.ReadByte();
                 int health = r.ReadInt32(), maxHealth = r.ReadInt32(), shield = r.ReadInt32();
+                int attrCount = r.ReadInt32();
+                float countdown = r.ReadSingle(), countdownMax = r.ReadSingle();
+                HostPlants.Add(new HostPlant { Col = col, Row = row, Type = type, Owner = owner });
                 var p = FindPlant(col, row, type);
                 if (p == null || p.thePlantType != type) continue;
+                ApplyAttributes(p, attrCount, countdown, countdownMax);
                 int local = p.thePlantHealth + p.theShieldHealth;
                 int host = health + shield;
                 bool changed = host != local || p.thePlantMaxHealth != maxHealth;
@@ -369,9 +436,204 @@ namespace FusionCoop.Coop
                 p.thePlantHealth = health;
                 p.theShieldHealth = shield;
                 if (!changed) continue;
-                try { p.ReplaceSprite(); }
+                try
+                {
+                    p.ReplaceSprite();
+                    p.UpdateText(); // the health bar and its numbers only follow the game's own health changes
+                }
                 catch (System.Exception e) { FusionCoopMod.Log.Warning($"[plant] sprite update failed: {e.Message}"); }
             }
+            bool sameLevel = boardType == (int)GameAPP.theBoardType && boardLevel == GameAPP.theBoardLevel;
+            if (hostBattle && sameLevel) Reconcile();
+        }
+
+        // The plant's own counters: attributeCount (e.g. the Apeacalypse minigun's energy from the damage it
+        // takes) and the countdown to its special move (the blue bar under the health bar). A countdown runs
+        // on both machines, so it is only corrected when it is clearly off.
+        private static void ApplyAttributes(Plant p, int count, float countdown, float countdownMax)
+        {
+            try
+            {
+                if (p.attributeCount != count) p.attributeCount = count;
+                if (countdownMax <= 0f) return;
+                if (System.Math.Abs(p.AttributeCountdown - countdown) > 0.5f ||
+                    System.Math.Abs(p.AttributeCountdownMaximum - countdownMax) > 0.01f)
+                    p.SetAttributeCountdown(countdown, countdownMax);
+            }
+            catch (System.Exception e) { FusionCoopMod.Log.Warning($"[plant] counter update failed: {e.Message}"); }
+        }
+
+        // ---------- board check ----------
+        // Client: a cell whose plants (types, counts, owners) stay different from the host's for a second is
+        // made like the host's: extra plants are removed, missing ones placed (supports such as lily pads and
+        // pots first, by retrying until nothing more fits), owners copied. Whatever made the boards differ
+        // (a blocked plant effect, an Odyssey round built from each window's own save, two players on one
+        // cell), the client's board comes back to the host's instead of staying wrong.
+        // Cells something just happened in (planting, replays, deaths) wait, so messages on their way land first.
+        private const double MismatchDelay = 1.0;  // a difference must last this long
+        private const double TouchQuiet = 1.5;     // no plant made or killed in the cell for this long
+        private const double FixCooldown = 3.0;    // after a fix, the cell waits this long before the next
+        private const double BattleSettle = 2.0;   // nothing is fixed in a battle's first seconds
+
+        private static readonly Dictionary<int, double> Mismatch = new(); // cell -> since when it differs
+        private static readonly Dictionary<int, double> Touched = new();  // cell -> last plant made/killed there
+        private static readonly Dictionary<int, double> FixedAt = new();  // cell -> last fix
+        private static double _battleSince;
+
+        private static void Touch(int col, int row) => Touched[CellKey(col, row)] = Session.Now;
+
+        private sealed class Cell
+        {
+            internal int Col, Row;
+            internal readonly List<HostPlant> Host = new();
+            internal readonly List<Plant> Local = new();
+        }
+
+        private static readonly Dictionary<int, Cell> Cells = new();
+
+        private static Cell CellAt(int col, int row)
+        {
+            int key = CellKey(col, row);
+            if (!Cells.TryGetValue(key, out var c)) Cells[key] = c = new Cell { Col = col, Row = row };
+            return c;
+        }
+
+        private static void Reconcile()
+        {
+            double now = Session.Now;
+            var board = Board.Instance;
+            if (!LevelSync.ClientInHostBattle || !BattleRunning || board == null || board.boardEntity == null)
+            {
+                _battleSince = 0;
+                Mismatch.Clear();
+                return;
+            }
+            if (_battleSince == 0) _battleSince = now;
+            if (now - _battleSince < BattleSettle) return;
+            var list = board.boardEntity.plantArray;
+            if (list == null) return;
+
+            Cells.Clear();
+            foreach (var h in HostPlants) CellAt(h.Col, h.Row).Host.Add(h);
+            for (int i = 0; i < list.Count; i++)
+            {
+                var p = list[i];
+                if (p != null) CellAt(p.thePlantColumn, p.thePlantRow).Local.Add(p);
+            }
+            var waiting = new HashSet<int>();
+            foreach (var pr in PendingRequests.Values) waiting.Add(CellKey(pr.Col, pr.Row));
+
+            int fixedCells = 0;
+            foreach (var kv in Cells)
+            {
+                int key = kv.Key;
+                var cell = kv.Value;
+                if (Same(cell))
+                {
+                    Mismatch.Remove(key);
+                    continue;
+                }
+                if (!Mismatch.TryGetValue(key, out var since))
+                {
+                    Mismatch[key] = now;
+                    continue;
+                }
+                if (now - since < MismatchDelay || waiting.Contains(key)) continue;
+                if (Touched.TryGetValue(key, out var t) && now - t < TouchQuiet) continue;
+                if (FixedAt.TryGetValue(key, out var f) && now - f < FixCooldown) continue;
+                if (fixedCells >= 12) break; // the rest next time
+                FixCell(cell);
+                FixedAt[key] = now;
+                Mismatch.Remove(key);
+                fixedCells++;
+            }
+            // cells that are no longer on either board
+            Dead.Clear();
+            foreach (var key in Mismatch.Keys)
+                if (!Cells.ContainsKey(key)) Dead.Add(key);
+            foreach (var key in Dead) Mismatch.Remove(key);
+        }
+
+        // Same plant types (with counts) and owners in the cell on both boards.
+        private static bool Same(Cell cell)
+        {
+            if (cell.Host.Count != cell.Local.Count) return false;
+            var left = new List<HostPlant>(cell.Host);
+            foreach (var p in cell.Local)
+            {
+                int i = left.FindIndex(h => h.Type == p.thePlantType);
+                if (i < 0) return false;
+                if (left[i].Owner != OwnerOf(p)) return false;
+                left.RemoveAt(i);
+            }
+            return true;
+        }
+
+        private static void FixCell(Cell cell)
+        {
+            int col = cell.Col, row = cell.Row;
+            var missing = new List<HostPlant>(cell.Host);
+            var extra = new List<Plant>();
+            foreach (var p in cell.Local)
+            {
+                int i = missing.FindIndex(h => h.Type == p.thePlantType);
+                if (i < 0)
+                {
+                    extra.Add(p);
+                    continue;
+                }
+                var h = missing[i];
+                missing.RemoveAt(i);
+                if (OwnerOf(p) == h.Owner) continue;
+                if (h.Owner == 255) Owners.Remove(p.GetInstanceID());
+                else SetOwner(p, h.Owner);
+            }
+
+            var removed = new List<string>();
+            foreach (var p in extra)
+            {
+                if (p == null) continue;
+                removed.Add(p.thePlantType.ToString());
+                Owners.Remove(p.GetInstanceID());
+                Replaying = true;
+                try { p.Die(Plant.DieReason.Default); }
+                catch (System.Exception e) { FusionCoopMod.Log.Warning($"[plant] fix: removing {p.thePlantType} failed: {e.Message}"); }
+                finally { Replaying = false; }
+            }
+
+            // A plant on a lily pad or in a pot only fits once its support is there: retry while anything fits,
+            // then place the rest freely (the host has them, so they belong there).
+            var added = new List<string>();
+            for (int pass = 0; pass < 4 && missing.Count > 0; pass++)
+            {
+                bool free = pass == 3;
+                bool progress = false;
+                for (int i = 0; i < missing.Count; i++)
+                {
+                    var h = missing[i];
+                    Plant plant;
+                    try { plant = Replay(col, row, h.Type, null, free); }
+                    catch (System.Exception e)
+                    {
+                        FusionCoopMod.Log.Warning($"[plant] fix: placing {h.Type} c{col} r{row} failed: {e.Message}");
+                        plant = null;
+                    }
+                    if (plant == null) continue;
+                    if (h.Owner != 255) SetOwner(plant, h.Owner);
+                    added.Add(plant.thePlantType == h.Type ? h.Type.ToString() : $"{h.Type}->{plant.thePlantType}");
+                    missing.RemoveAt(i--);
+                    progress = true;
+                }
+                if (!progress && pass < 2) pass = 2; // straight to the free pass
+            }
+            Touch(col, row);
+
+            string msg = $"[plant] fixed c{col} r{row} to match the host";
+            if (removed.Count > 0) msg += $": removed {string.Join(", ", removed)}";
+            if (added.Count > 0) msg += $"{(removed.Count > 0 ? ";" : ":")} placed {string.Join(", ", added)}";
+            if (missing.Count > 0) msg += $"; could not place {string.Join(", ", missing.ConvertAll(h => h.Type.ToString()))}";
+            if (removed.Count == 0 && added.Count == 0 && missing.Count == 0) msg += ": owners";
+            FusionCoopMod.Log.Msg(msg);
         }
 
         // ---------- network ----------
@@ -614,6 +876,7 @@ namespace FusionCoop.Coop
             private static bool Prefix(Plant __instance, Plant.DieReason reason)
             {
                 if (ClientGuard && ZombieCaused(reason)) return false;
+                if (Session.Role == Role.Client && __instance != null) Touch(__instance.thePlantColumn, __instance.thePlantRow);
                 if (Session.Role != Role.Host || !Session.Ready || Replaying || __instance == null) return true;
                 if (!SendsDeath(reason) || Board.Instance == null) return true;
                 int col = __instance.thePlantColumn, row = __instance.thePlantRow;

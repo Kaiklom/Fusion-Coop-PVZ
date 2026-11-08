@@ -30,6 +30,7 @@ namespace FusionCoop.Coop
         private static float _ownSpeed = -1;
         private static float _hostSpeed = -1; // client: the host's last speed that isn't a pause
         private static double _nextKeepalive, _nextNote;
+        private static float _forced = -1;    // client: the host's value we last put into timeScale
 
         internal static bool HostPaused => Session.Role == Role.Client && _hostValue == 0f && BattleRunning;
 
@@ -107,8 +108,21 @@ namespace FusionCoop.Coop
         private static void ClientUpdate()
         {
             ApplyDifficulty();
-            if (!BattleRunning || _hostValue < 0f) return;
+            if (!BattleRunning)
+            {
+                // Out of battle (menus, the next level's intro camera and card chooser) the host's speed no longer
+                // applies: a slow or fast speed we put in would otherwise stay until the next battle.
+                if (_forced >= 0f && Math.Abs(Time.timeScale - _forced) < 0.001f && Math.Abs(_forced - 1f) >= 0.001f)
+                {
+                    Time.timeScale = 1f;
+                    FusionCoopMod.Log.Msg($"[speed] out of battle: the host's x{_forced:0.##} taken off");
+                }
+                _forced = -1;
+                return;
+            }
+            if (_hostValue < 0f) return;
             float now = Time.timeScale;
+            _forced = _hostValue;
             if (Math.Abs(now - _hostValue) < 0.001f) return;
             Time.timeScale = _hostValue;
             if (Session.Now >= _nextNote)

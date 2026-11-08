@@ -482,12 +482,13 @@ namespace FusionCoop.Coop
             {
                 // only the host's: closing a menu with the host (_replaying) also leads here, and a second
                 // TravelNextRound would build a second board and card chooser
-                if (IsClient) return _nextRound;
+                if (IsClient && !_nextRound) return false;
                 if (IsHost)
                 {
                     Session.SendToClients(Protocol.Build(Msg.TravelNextRound));
                     FusionCoopMod.Log.Msg("[travel] host goes on to the next round -> clients");
                 }
+                PlantSync.BeginRoundBuild();
                 return true;
             }
         }

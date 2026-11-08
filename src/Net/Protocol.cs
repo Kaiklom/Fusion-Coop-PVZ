@@ -66,8 +66,10 @@ namespace FusionCoop.Net
         // (a plant the game created on its own during battle: presents, plant effects; the requested
         // type may fuse with the plant already in the cell into resultType)
         PlantSpawned = 52,
-        // host -> clients, 5 Hz: ushort count, then
-        // count x (sbyte col, sbyte row, int type, int health, int maxHealth, int shield)
+        // host -> clients, 5 Hz: bool battle, int boardType, int boardLevel, ushort count, then
+        // count x (sbyte col, sbyte row, int type, byte owner (255 none), int health, int maxHealth, int shield,
+        // int attributeCount, float attributeCountdown, float attributeCountdownMax)
+        // (clients also fix cells whose plants stay different from these, PlantSync.Reconcile)
         PlantState = 53,
         // client -> host: uint zombie id, int damage, int damageType (the client's hammer hit a puppet)
         ZombieHit = 54,
@@ -158,7 +160,7 @@ namespace FusionCoop.Net
 
     internal static class Protocol
     {
-        internal const int Version = 39;
+        internal const int Version = 40;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
