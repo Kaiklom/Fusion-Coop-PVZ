@@ -164,11 +164,14 @@ namespace FusionCoop.Net
         // host -> clients, 2 Hz: ushort n, n x (sbyte col, sbyte row, int plantType, float health) the host's ice
         // blocks (FreezeSync)
         IceState = 91,
+        // host -> clients: (sbyte col, sbyte row, int plantType, sbyte targetCol, sbyte targetRow, int targetType)
+        // a Drone Commando picked the Commando it follows (DroneSync)
+        DroneAttach = 92,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 43;
+        internal const int Version = 44;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;

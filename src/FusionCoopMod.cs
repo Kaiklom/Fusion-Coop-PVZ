@@ -111,6 +111,7 @@ namespace FusionCoop
             Coop.MultiChoiceSync.Init();
             Coop.MixBombSync.Init();
             Coop.FreezeSync.Init();
+            Coop.DroneSync.Init();
             Ui.CoopWindows.Init();
             Ui.Pings.Init();
             Coop.MagnetarSync.Init();
@@ -232,6 +233,8 @@ namespace FusionCoop
                 typeof(Coop.MixBombSync.DropPatch),
                 typeof(Coop.MixBombSync.ImitaterPatch),
                 typeof(Coop.FreezeSync.FreezePatch),
+                typeof(Coop.DroneSync.SearchPatch),
+                typeof(Coop.DroneSync.LeaveGridPatch),
                 typeof(Coop.FreezeSync.SetIceBlockPatch),
                 typeof(Coop.FreezeSync.IceDamagePatch),
                 typeof(Coop.FreezeSync.IceBrokenPatch),
