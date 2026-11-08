@@ -38,6 +38,7 @@ namespace FusionCoop.Coop
             internal Zombie Zombie;
             internal Vector2 Target;
             internal bool Killed;
+            internal double KilledAt;
         }
 
         private static readonly Dictionary<uint, Remote> ClientZombies = new();
@@ -702,8 +703,20 @@ namespace FusionCoop.Coop
             foreach (var id in Stale)
             {
                 var rz = ClientZombies[id];
+                if (rz.Zombie != null && rz.Killed)
+                {
+                    // Killed here: give its death animation time to finish, then make sure it is gone (a death
+                    // that failed half way would leave it on the lawn, where plants keep attacking it).
+                    if (Session.Now - rz.KilledAt < 5) continue;
+                    ClientZombies.Remove(id);
+                    if (rz.Zombie == null) continue;
+                    FusionCoopMod.Log.Msg($"[zombie] {rz.Zombie.theZombieType} #{id} still here 5 s after its death: removed");
+                    Puppets.Remove(rz.Zombie.GetInstanceID());
+                    Object.Destroy(rz.Zombie.gameObject);
+                    continue;
+                }
                 ClientZombies.Remove(id);
-                if (rz.Zombie == null || rz.Killed) continue;
+                if (rz.Zombie == null) continue;
                 Puppets.Remove(rz.Zombie.GetInstanceID());
                 Object.Destroy(rz.Zombie.gameObject);
             }
@@ -841,6 +854,7 @@ namespace FusionCoop.Coop
         {
             if (rz.Killed || rz.Zombie == null) return;
             rz.Killed = true;
+            rz.KilledAt = Session.Now;
             if (rz.Zombie.theStatus != ZombieStatus.Dying && WaitForBite(rz, reason)) return;
             KillNow(rz.Zombie, reason);
         }
@@ -852,14 +866,24 @@ namespace FusionCoop.Coop
             // Zombies a death lets out (a MachineNut's imps, ...) arrive from the host if its zombie let them out:
             // it may have died in a way that doesn't (a mower), while Die here always would.
             _killing = true;
+            bool died = false;
             try
             {
-                Replay(() => CallDie(z, reason));
+                Replay(() =>
+                {
+                    CallDie(z, reason);
+                    died = true;
+                });
             }
             finally
             {
                 _killing = false;
             }
+            // The game's death failed on the puppet (JackboxJumpZombie.DieEvent throws on clients): the host's
+            // zombie is dead, so ours goes too instead of standing on the lawn.
+            if (died || z == null) return;
+            FusionCoopMod.Log.Warning($"[zombie] {z.theZombieType} could not die the game's way: removed");
+            Object.Destroy(z.gameObject);
         }
 
         private static Zombie Spawn(CreateZombie cz, uint id, int row, ZombieType type, float x, bool mind)
