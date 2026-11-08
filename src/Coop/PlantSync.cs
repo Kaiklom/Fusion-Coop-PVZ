@@ -263,7 +263,7 @@ namespace FusionCoop.Coop
                 return false;
             }
 
-            private static void Postfix(Plant __result, int newColumn, int newRow, PlantType theSeedType)
+            private static void Postfix(Plant __result, int newColumn, int newRow, PlantType theSeedType, bool isFreeSet)
             {
                 if (__result == null) return;
                 if (Session.Role == Role.Client) Touch(newColumn, newRow);
@@ -285,6 +285,7 @@ namespace FusionCoop.Coop
                     w.Write((sbyte)row);
                     w.Write((int)theSeedType);
                     w.Write((int)result);
+                    w.Write(isFreeSet);
                 }));
             }
 
@@ -856,13 +857,18 @@ namespace FusionCoop.Coop
                     int col = r.ReadSByte(), row = r.ReadSByte();
                     var asked = (PlantType)r.ReadInt32();
                     var result = (PlantType)r.ReadInt32();
+                    bool free = r.ReadBoolean();
                     var plant = FindPlant(col, row, result);
-                    if (plant == null || plant.thePlantType != result)
+                    // A free placement adds to the cell even when one of that type is there (several giant
+                    // wall-nuts in a row); otherwise one already there is the host's.
+                    if (free || plant == null || plant.thePlantType != result)
                     {
                         // The opened present must not be in the cell when its result is planted.
                         RemovePresents(col, row);
-                        plant = Replay(col, row, asked);
-                        if (plant == null && asked != result) plant = Replay(col, row, result);
+                        // Placed freely on the host (e.g. the Pea-nut Commando's giant wall-nuts in its own
+                        // cell): the same here, as the cell's checks would refuse it.
+                        plant = Replay(col, row, asked, null, free);
+                        if (plant == null && asked != result) plant = Replay(col, row, result, null, free);
                     }
                     if (plant != null && owner != 255) SetOwner(plant, owner);
                     FusionCoopMod.Log.Msg($"[plant] host made {asked}->{result} c{col} r{row} -> {(plant != null ? plant.thePlantType.ToString() : "FAILED")}");

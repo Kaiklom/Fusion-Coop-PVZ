@@ -240,6 +240,7 @@ namespace FusionCoop
                 typeof(Coop.CommandoSync.GloomPatch),
                 typeof(Coop.CommandoSync.TriphoonPatch),
                 typeof(Coop.CommandoSync.FlurryPatch),
+                typeof(Coop.CommandoSync.PeanutPatch),
                 typeof(Coop.FreezeSync.SetIceBlockPatch),
                 typeof(Coop.FreezeSync.IceDamagePatch),
                 typeof(Coop.FreezeSync.IceBrokenPatch),

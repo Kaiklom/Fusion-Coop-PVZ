@@ -18,10 +18,32 @@ namespace FusionCoop.Coop
     //   with _p = 0 (never); the host's ultimate is replayed by one Shoot1 with _p = 1000 (always).
     // - Flurry (SuperGatlingFume.StartShooting): the roll sets super for that attack. Clients set it from the
     //   host's message (which may come just before or after their own StartShooting).
+    // - Pea-nut (SuperNutShooter.Shoot1): its own roll (Random.Range(0, 100) against a fixed chance) starts the
+    //   barrage that lets giant wall-nuts out (Shoot2 plants them; clients get those as the host's plants).
+    //   The roll is the first random number Shoot1 draws, so it is steered through Random's seed: clients
+    //   shoot from a seed whose first roll is 99 (never), the host's ultimate is replayed from one whose
+    //   first roll is 0 (always); Random's state is put back after.
     // Dynamite Commando has no class of its own: its prefab uses one of the above (the log names its type).
     internal static class CommandoSync
     {
-        private const byte KindSuperShoot = 0, KindGloom = 1, KindThree = 2, KindFlurry = 3;
+        private const byte KindSuperShoot = 0, KindGloom = 1, KindThree = 2, KindFlurry = 3, KindNut = 4;
+
+        // Seeds whose first Random.Range(0, 100) is 99 / 0, found once.
+        private static int _neverSeed = -1, _alwaysSeed = -1;
+
+        private static void FindSeeds()
+        {
+            if (_neverSeed >= 0 && _alwaysSeed >= 0) return;
+            var saved = UnityEngine.Random.state;
+            for (int seed = 1; seed < 100000 && (_neverSeed < 0 || _alwaysSeed < 0); seed++)
+            {
+                UnityEngine.Random.InitState(seed);
+                int roll = UnityEngine.Random.Range(0, 100);
+                if (roll == 99 && _neverSeed < 0) _neverSeed = seed;
+                if (roll == 0 && _alwaysSeed < 0) _alwaysSeed = seed;
+            }
+            UnityEngine.Random.state = saved;
+        }
 
         // client: Flurry Commandos the host said are super, by instance id -> when
         private static readonly System.Collections.Generic.Dictionary<int, double> FlurryPending = new();
@@ -126,6 +148,31 @@ namespace FusionCoop.Coop
             }
         }
 
+        [HarmonyPatch(typeof(SuperNutShooter), nameof(SuperNutShooter.Shoot1))]
+        internal static class PeanutPatch
+        {
+            private static void Prefix(SuperNutShooter __instance, out (float timer, UnityEngine.Random.State random, bool steered) __state)
+            {
+                __state = (__instance.timer, default, false);
+                if (!IsClient) return;
+                FindSeeds();
+                __state.random = UnityEngine.Random.state;
+                __state.steered = true;
+                UnityEngine.Random.InitState(_replaying ? _alwaysSeed : _neverSeed);
+            }
+
+            private static void Postfix(SuperNutShooter __instance, (float timer, UnityEngine.Random.State random, bool steered) __state)
+            {
+                if (IsHost && __instance.timer == 5f && __state.timer != 5f) Send(__instance, KindNut, 5f);
+            }
+
+            private static System.Exception Finalizer(System.Exception __exception, (float timer, UnityEngine.Random.State random, bool steered) __state)
+            {
+                if (__state.steered) UnityEngine.Random.state = __state.random;
+                return __exception;
+            }
+        }
+
         [HarmonyPatch(typeof(SuperGatlingFume), nameof(SuperGatlingFume.StartShooting))]
         internal static class FlurryPatch
         {
@@ -162,7 +209,11 @@ namespace FusionCoop.Coop
             _replaying = true;
             try
             {
-                if (kind == KindThree)
+                if (kind == KindNut)
+                {
+                    p.TryCast<SuperNutShooter>()?.Shoot1();
+                }
+                else if (kind == KindThree)
                 {
                     var three = p.TryCast<SuperThreeGatling>();
                     if (three != null)

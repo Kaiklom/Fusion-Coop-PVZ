@@ -62,7 +62,7 @@ namespace FusionCoop.Net
         ZombieDied = 50,
         // host -> clients: sbyte col, sbyte row, int plantType, int dieReason (eaten, crushed, used up...)
         PlantDied = 51,
-        // host -> clients: byte owner (255 none), sbyte col, sbyte row, int requestedType, int resultType
+        // host -> clients: byte owner (255 none), sbyte col, sbyte row, int requestedType, int resultType, bool free
         // (a plant the game created on its own during battle: presents, plant effects; the requested
         // type may fuse with the plant already in the cell into resultType)
         PlantSpawned = 52,
@@ -168,14 +168,14 @@ namespace FusionCoop.Net
         // a Drone Commando picked the Commando it follows (DroneSync)
         DroneAttach = 92,
         // host -> clients: (sbyte col, sbyte row, int plantType, byte kind[0 SuperShoot, 1 Melancholy, 2 Tri-phoon,
-        // 3 Flurry], float arg)
+        // 3 Flurry, 4 Pea-nut], float arg)
         // a Commando started its ultimate (CommandoSync)
         CommandoUltimate = 93,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 45;
+        internal const int Version = 46;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
