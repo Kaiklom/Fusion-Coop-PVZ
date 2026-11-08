@@ -18,7 +18,9 @@ namespace FusionCoop.Coop
     // - Client: its own freezes are blocked and its blocks take no damage; it freezes and breaks the host's.
     // - Ice blocks a level starts with (Board.SetFreezedPlant, snow level strategies and event nodes) are put
     //   at random cells with random plants in each window: clients make none themselves; the host sends its
-    //   blocks every second (cell, plant type) and clients match them, as with graves (GraveSync).
+    //   blocks twice a second (cell, plant type, health) and clients match them, as with graves (GraveSync).
+    //   A block's cracks follow its health inside FreezedPlant.TakeDamage, so the host's damage is replayed
+    //   through it.
     internal static class FreezeSync
     {
         private static bool _replaying;
@@ -84,7 +86,7 @@ namespace FusionCoop.Coop
         internal static void Update()
         {
             if (!IsHost || Board.Instance == null || Session.Now < _nextState) return;
-            _nextState = Session.Now + 1;
+            _nextState = Session.Now + 0.5;
             var blocks = Blocks();
             Session.SendToClients(Protocol.Build(Msg.IceState, w =>
             {
@@ -94,6 +96,7 @@ namespace FusionCoop.Coop
                     w.Write((sbyte)b.theItemColumn);
                     w.Write((sbyte)b.theItemRow);
                     w.Write((int)b.thePlantType);
+                    w.Write(b.health);
                 }
             }));
         }
@@ -127,8 +130,14 @@ namespace FusionCoop.Coop
             {
                 int col = r.ReadSByte(), row = r.ReadSByte();
                 var type = (PlantType)r.ReadInt32();
+                float health = r.ReadSingle();
                 want.Add((col, row));
-                if (BlockAt(col, row) != null) continue;
+                var have = BlockAt(col, row);
+                if (have != null)
+                {
+                    ApplyHealth(have, health);
+                    continue;
+                }
                 FreezedPlant made = null;
                 Replay(() =>
                 {
@@ -156,6 +165,14 @@ namespace FusionCoop.Coop
                 board.griditemArray.Remove(b);
                 Object.Destroy(b.gameObject);
             }
+        }
+
+        private static void ApplyHealth(FreezedPlant block, float health)
+        {
+            if (health <= 0f || health >= block.health) return; // breaking comes as IceBroken
+            int damage = Mathf.CeilToInt(block.health - health);
+            Replay(() => block.TakeDamage(damage, null, DamageType.Normal, (PlantType)(-1), false));
+            if (block != null && block.health > 0f) block.health = health;
         }
 
         [HarmonyPatch(typeof(FreezedPlant), nameof(FreezedPlant.TakeDamage))]

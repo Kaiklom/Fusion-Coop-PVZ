@@ -161,13 +161,14 @@ namespace FusionCoop.Net
         PlantFrozen = 89,
         // host -> clients: (sbyte col, sbyte row) the host's ice block in that cell broke (FreezeSync)
         IceBroken = 90,
-        // host -> clients, 1 Hz: ushort n, n x (sbyte col, sbyte row, int plantType) the host's ice blocks (FreezeSync)
+        // host -> clients, 2 Hz: ushort n, n x (sbyte col, sbyte row, int plantType, float health) the host's ice
+        // blocks (FreezeSync)
         IceState = 91,
     }
 
     internal static class Protocol
     {
-        internal const int Version = 42;
+        internal const int Version = 43;
         internal const int DefaultPort = 43096;
         internal const int MaxPlayers = 4;
         internal const int MaxFrame = 64 * 1024;
