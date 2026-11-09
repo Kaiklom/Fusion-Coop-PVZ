@@ -18,6 +18,8 @@
     <MLDir>$(GameDir)\MelonLoader</MLDir>
     <!-- Second install for two-window testing on one PC -->
     <Client2Dir>$(GameDir)_client2</Client2Dir>
+    <Client3Dir>$(GameDir)_client3</Client3Dir>
+    <Client4Dir>$(GameDir)_client4</Client4Dir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -43,6 +45,8 @@
   <Target Name="CopyToMods" AfterTargets="Build">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(GameDir)\Mods" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Client2Dir)\Mods" Condition="Exists('$(Client2Dir)\Mods')" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Client3Dir)\Mods" Condition="Exists('$(Client3Dir)\Mods')" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Client4Dir)\Mods" Condition="Exists('$(Client4Dir)\Mods')" />
   </Target>
 
 </Project>

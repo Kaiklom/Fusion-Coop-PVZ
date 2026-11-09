@@ -9,6 +9,7 @@ namespace FusionCoop.Coop
     // - 9 (host): spawn that zombie at the right edge of the lane under the cursor; it reaches
     //   clients through the normal zombie sync
     // - F4: +1000 sun to your own wallet
+    // - 8 (client): send your last planting to the host again (two players on one cell at the same moment)
     internal static class TestTools
     {
         internal static bool Enabled;
@@ -60,6 +61,7 @@ namespace FusionCoop.Coop
             if (Input.GetKeyDown(KeyCode.F5)) Select(-1);
             if (Input.GetKeyDown(KeyCode.F6)) Select(+1);
             if (Input.GetKeyDown(KeyCode.Alpha9) || Input.GetKeyDown(KeyCode.Keypad9)) Spawn();
+            if (Input.GetKeyDown(KeyCode.Alpha8) || Input.GetKeyDown(KeyCode.Keypad8)) PlantSync.ResendLastRequest();
             if (Input.GetKeyDown(KeyCode.F4))
             {
                 Board.Instance.GetSun(1000, false);

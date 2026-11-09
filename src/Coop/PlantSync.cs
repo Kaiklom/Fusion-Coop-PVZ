@@ -34,6 +34,30 @@ namespace FusionCoop.Coop
         private static readonly Dictionary<uint, Pending> PendingRequests = new();
         private static uint _nextSeq = 1;
 
+        // Test key 8 (client): the last request sent again, as if another player put the same card on the same
+        // cell at the same moment (the host gets both before either result is back).
+        private static (int col, int row, PlantType type)? _lastRequest;
+
+        internal static void ResendLastRequest()
+        {
+            if (Session.Role != Role.Client || !Session.Ready || _lastRequest == null)
+            {
+                Overlay.Toast("test: place a plant as a client first");
+                return;
+            }
+            var (col, row, type) = _lastRequest.Value;
+            uint seq = _nextSeq++;
+            Session.SendToHost(Protocol.Build(Msg.PlantRequest, w =>
+            {
+                w.Write(seq);
+                w.Write((sbyte)col);
+                w.Write((sbyte)row);
+                w.Write((int)type);
+            }));
+            FusionCoopMod.Log.Msg($"[plant] test: request #{seq} {type} c{col} r{row} sent again");
+            Overlay.Toast($"test: {type} c{col} r{row} sent to the host again");
+        }
+
         // Set while the local player's TryToSetPlantByCard runs, so SetPlant can report what it made.
         private static bool _capturing;
         private static Plant _captured;
@@ -239,6 +263,7 @@ namespace FusionCoop.Coop
                         w.Write((int)type);
                     }));
                     FusionCoopMod.Log.Msg($"[plant] request #{seq} {type} c{col} r{row} paid {paid}");
+                    _lastRequest = (col, row, type);
                 }
             }
         }
