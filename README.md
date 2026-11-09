@@ -68,7 +68,9 @@ leave. Visual modules stay each player's own. FusionCoop works without Magnetar.
 ## Known issues
 
 - A window can close by itself while loading (before FusionCoop starts): start it again.
-- 3–4 player rooms and Odyssey jigsaw pieces are untested.
+- 4 player rooms and Odyssey jigsaw pieces are untested.
+
+Found a bug? Please send a **video** of it and your `MelonLoader/Latest.log` (it shows your folder paths).
 
 ## Settings
 
@@ -155,7 +157,9 @@ Custom Difficulty) จะเป็นไปตาม host และได้ค�
 ### ปัญหาที่รู้แล้ว
 
 - หน้าต่างเกมอาจปิดเองตอนกำลังโหลด (ก่อน FusionCoop เริ่ม): เปิดใหม่อีกครั้ง
-- ห้อง 3–4 คน และชิ้น jigsaw ใน Odyssey ยังไม่ได้ทดสอบ
+- ห้อง 4 คน และชิ้น jigsaw ใน Odyssey ยังไม่ได้ทดสอบ
+
+เจอบั๊ก? ส่ง**วิดีโอ**ตอนที่เกิด พร้อมไฟล์ `MelonLoader/Latest.log` มาด้วย (ในไฟล์มีชื่อโฟลเดอร์ในเครื่องคุณ)
 
 ### ตั้งค่า
 
